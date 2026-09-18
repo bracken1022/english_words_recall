@@ -4,6 +4,7 @@ class names/wording are actually present in the shipped files — not
 rendered output, per research.md's established "no JS test runner"
 convention. Deep visual verification stays manual (quickstart.md)."""
 
+import re
 from pathlib import Path
 
 TEMPLATE_PATH = Path(__file__).resolve().parents[2] / "src/web/templates/index.html"
@@ -55,3 +56,32 @@ def test_answer_and_sentence_forms_use_field_row():
         form_html = html[form_start:form_end]
         assert "field-row" in form_html, f"#{form_id} must contain a field-row wrapper"
         assert f'id="{input_id}"' in form_html
+
+
+def test_hidden_attribute_override_rule_exists():
+    """Regression guard (spec 005): style.css sets `display: none` on
+    `section` and `.spinner`, which silently defeats the HTML `hidden`
+    attribute unless an explicit, higher-priority override exists. See
+    research.md "Root cause, confirmed by reading the shipped code"."""
+    css = CSS_PATH.read_text(encoding="utf-8")
+    match = re.search(r"\[hidden\]\s*{([^}]*)}", css)
+    assert match is not None, "style.css must define a [hidden] rule that overrides other display rules"
+    rule_body = match.group(1)
+    assert "display" in rule_body and "none" in rule_body
+    assert "!important" in rule_body, (
+        "the [hidden] override must use !important — without it, .spinner{display:flex} and "
+        "section{display:flex} (equal or higher specificity/order) can still win the cascade"
+    )
+
+
+def test_spinner_uses_hidden_attribute_not_a_separate_mechanism():
+    """Regression guard (spec 005, User Story 2): confirms the spinner is
+    actually covered by the [hidden] override above, rather than using
+    some other visibility mechanism the fix wouldn't reach."""
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    spinner_tag_start = html.index('id="spinner"')
+    tag_open = html.rindex("<", 0, spinner_tag_start)
+    tag_close = html.index(">", spinner_tag_start)
+    spinner_tag = html[tag_open:tag_close]
+    assert "hidden" in spinner_tag.split(), "the spinner element must use the plain `hidden` attribute"
+    assert "style=" not in spinner_tag, "the spinner must not hide itself via an inline style"

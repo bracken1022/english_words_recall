@@ -2,6 +2,17 @@
   box-sizing: border-box;
 }
 
+/* Restores the HTML `hidden` attribute's guarantee: without this, an
+   author rule that sets `display` on the same element (section, .spinner,
+   below) silently overrides `hidden`, so every step's content and the
+   spinner render simultaneously regardless of app.js's state (spec 005,
+   research.md). This is a correct, deliberate use of !important — it
+   enforces a boolean semantic state against ordinary presentational
+   rules, not an ad hoc specificity fix. */
+[hidden] {
+  display: none !important;
+}
+
 body {
   font-family: system-ui, sans-serif;
   margin: 0;
