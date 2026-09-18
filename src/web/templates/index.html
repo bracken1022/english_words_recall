@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>English Tutor</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main id="app">
+    <div id="warnings" class="warnings" hidden></div>
+
+    <section id="empty-view" hidden>
+      <p>No vocabulary items are available for this session.</p>
+    </section>
+
+    <section id="complete-view" hidden>
+      <p>Session complete — you've gone through every item.</p>
+    </section>
+
+    <section id="recall-view" hidden>
+      <p class="meaning">Chinese meaning: <span id="chinese"></span></p>
+      <form id="answer-form">
+        <label for="answer-input">Your answer (English):</label>
+        <input id="answer-input" name="answer" type="text" autocomplete="off">
+        <button type="submit">Submit</button>
+      </form>
+      <p id="recall-result" hidden></p>
+    </section>
+
+    <section id="sentence-view" hidden>
+      <p>Write a sentence using "<span id="target-expression"></span>":</p>
+      <form id="sentence-form">
+        <label for="sentence-input">Your sentence:</label>
+        <input id="sentence-input" name="sentence" type="text" autocomplete="off">
+        <button type="submit">Submit</button>
+      </form>
+      <div id="spinner" class="spinner" hidden aria-live="polite">Reviewing your sentence...</div>
+    </section>
+
+    <section id="feedback-view" hidden>
+      <div id="feedback-result"></div>
+      <button id="continue-button" type="button">Continue</button>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>

@@ -56,7 +56,7 @@ group: unit1
 > a malformed vocabulary file. The defaults (`./vocabulary/` vs
 > `./progress.md`) already keep them separate.
 
-## Running
+## Running (command line)
 
 ```bash
 .venv/bin/python -m src.cli --vocab-dir path/to/vocabulary --progress-file progress.md
@@ -82,6 +82,32 @@ Your practice history is appended to the progress file as plain,
 human-readable Markdown — see
 `specs/001-vocab-recall-tutor/contracts/progress-log-format.md`.
 
+## Running (web UI)
+
+A browser-based version of the same tutor is also available, so you can
+practice from a phone, tablet, or another computer on the same local
+network — it reads/writes the exact same vocabulary and progress files, and
+reuses the exact same Ollama review pipeline, as the command line tool
+above. It does not require authentication and is not exposed to the public
+Internet by default.
+
+```bash
+.venv/bin/python -m src.web --vocab-dir path/to/vocabulary --progress-file progress.md
+```
+
+This prints the address to open (default `http://0.0.0.0:8420`, which is
+reachable at your machine's own LAN IP address, e.g.
+`http://192.168.1.23:8420`, from any other device on the same network — find
+your machine's LAN IP with `ipconfig getifaddr en0` on macOS or `ip addr` on
+Linux). It accepts the same `--vocab-dir`, `--progress-file`, `--group`,
+`--ollama-url`, and `--model` flags as the CLI, plus `--host` and `--port`
+to change what it binds to.
+
+The web UI and the command-line tool can be run at the same time and are
+just two ways to reach the same tutor — running one doesn't require
+stopping the other (though see the caution above about keeping
+`--progress-file` outside `--vocab-dir` for either).
+
 ## Development
 
 ```bash
@@ -89,5 +115,6 @@ human-readable Markdown — see
 .venv/bin/ruff check .   # lint
 ```
 
-See `specs/001-vocab-recall-tutor/` for the full spec, plan, and design
-artifacts this feature was built from.
+See `specs/001-vocab-recall-tutor/`, `specs/002-sentence-review-indicator/`,
+and `specs/003-web-ui/` for the full specs, plans, and design artifacts this
+project was built from.
