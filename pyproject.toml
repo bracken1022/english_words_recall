@@ -1,0 +1,34 @@
+[project]
+name = "english-tutor"
+version = "0.1.0"
+description = "Local English vocabulary recall tutor for Chinese speakers"
+requires-python = ">=3.11"
+dependencies = [
+    "requests>=2.31",
+    "PyYAML>=6.0",
+    "rich>=13.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.5",
+]
+
+[project.scripts]
+english-tutor = "src.cli.__main__:main"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = [".specify"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
