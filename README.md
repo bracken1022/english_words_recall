@@ -62,6 +62,12 @@ group: unit1
 .venv/bin/python -m src.cli --vocab-dir path/to/vocabulary --progress-file progress.md
 ```
 
+While a submitted sentence is being reviewed, the app shows a spinner
+("Reviewing your sentence...") so you know it's still working — it
+disappears the instant the review completes or fails, and never shows a
+fake percentage. If output isn't an interactive terminal (e.g., redirected
+to a file), it prints that same message once instead of animating.
+
 Options:
 
 | Flag | Default | Purpose |

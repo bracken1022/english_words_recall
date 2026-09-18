@@ -6,6 +6,7 @@ from pathlib import Path
 
 from rich.console import Console
 
+from src.cli.loading_indicator import run_with_indicator
 from src.models.practice_attempt import PracticeAttempt
 from src.models.vocabulary_item import VocabularyItem
 from src.services.llm_client import DEFAULT_MODEL, request_correction
@@ -69,7 +70,15 @@ def run_sentence_step(
     else:
         sentence = sentence_input()
 
-    result = request_correction(target_expression, sentence, base_url=base_url, model=model)
+    result = run_with_indicator(
+        console,
+        "Reviewing your sentence...",
+        request_correction,
+        target_expression,
+        sentence,
+        base_url=base_url,
+        model=model,
+    )
 
     if not result.available:
         feedback = "correction unavailable"
