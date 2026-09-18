@@ -29,7 +29,6 @@ section {
 }
 
 input[type="text"] {
-  width: 100%;
   font-size: 1rem;
   padding: 12px;
   border: 1px solid #ccc;
@@ -49,6 +48,37 @@ button {
 
 button:active {
   background: #1e4fc4;
+}
+
+button:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+/* Groups an <input> with its submit <button> as one visual row instead of
+   the input filling the full width and pushing the button onto its own
+   line below (spec 004 FR-004). */
+.field-row {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.field-row input[type="text"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.feedback-correct {
+  color: #15803d;
+  font-weight: 600;
+}
+
+.feedback-incorrect {
+  color: #b91c1c;
+  font-weight: 600;
 }
 
 .warnings {

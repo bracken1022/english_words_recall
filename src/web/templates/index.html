@@ -22,18 +22,23 @@
       <p class="meaning">Chinese meaning: <span id="chinese"></span></p>
       <form id="answer-form">
         <label for="answer-input">Your answer (English):</label>
-        <input id="answer-input" name="answer" type="text" autocomplete="off">
-        <button type="submit">Submit</button>
+        <div class="field-row">
+          <input id="answer-input" name="answer" type="text" autocomplete="off">
+          <button type="submit">Submit</button>
+        </div>
       </form>
-      <p id="recall-result" hidden></p>
     </section>
+
+    <p id="word-feedback" hidden></p>
 
     <section id="sentence-view" hidden>
       <p>Write a sentence using "<span id="target-expression"></span>":</p>
       <form id="sentence-form">
         <label for="sentence-input">Your sentence:</label>
-        <input id="sentence-input" name="sentence" type="text" autocomplete="off">
-        <button type="submit">Submit</button>
+        <div class="field-row">
+          <input id="sentence-input" name="sentence" type="text" autocomplete="off">
+          <button type="submit">Submit</button>
+        </div>
       </form>
       <div id="spinner" class="spinner" hidden aria-live="polite">Reviewing your sentence...</div>
     </section>

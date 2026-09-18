@@ -27,6 +27,7 @@ class PracticeSession:
         self.current_index = 0
         self.pending_attempt: dict | None = None
         self.last_correction: CorrectionResult | None = None
+        self._review_in_progress = False
 
         items, warnings = load_vocabulary(vocab_dir)
         self.warnings = warnings
@@ -64,14 +65,21 @@ class PracticeSession:
     ) -> dict:
         if self.step != "sentence":
             raise WrongStepError("not awaiting a sentence")
+        if self._review_in_progress:
+            raise WrongStepError("a sentence review is already in progress")
 
         # Resolved from the module global at call time (not bound as a
         # default argument) so tests can patch `request_correction` here.
         if correction_fn is None:
             correction_fn = request_correction
 
-        item = self.current_item
-        result = correction_fn(item.english, sentence, base_url=base_url, model=model)
+        self._review_in_progress = True
+        try:
+            item = self.current_item
+            result = correction_fn(item.english, sentence, base_url=base_url, model=model)
+        finally:
+            self._review_in_progress = False
+
         self.last_correction = result
 
         if not result.available:
@@ -119,6 +127,8 @@ class PracticeSession:
 
         if self.step in ("sentence", "feedback"):
             base["accepted_expressions"] = item.accepted_expressions()
+            base["answer"] = self.pending_attempt["answer"]
+            base["correct"] = self.pending_attempt["correct"]
 
         if self.step == "feedback":
             base["sentence"] = self.pending_attempt["sentence"]

@@ -158,3 +158,59 @@ def test_post_sentence_advances_step_to_feedback(mock_request, tmp_path: Path):
     client.post("/api/sentence", json={"sentence": "I received a gift."})
     state = client.get("/api/state").get_json()
     assert state["step"] == "feedback"
+
+
+def test_get_state_recall_step_has_no_answer_or_correct_fields(tmp_path: Path):
+    client = _make_client(tmp_path)
+    data = client.get("/api/state").get_json()
+    assert "answer" not in data
+    assert "correct" not in data
+
+
+def test_get_state_sentence_step_includes_answer_and_correct(tmp_path: Path):
+    client = _make_client(tmp_path)
+    client.post("/api/answer", json={"answer": "wrong"})
+    data = client.get("/api/state").get_json()
+    assert data["step"] == "sentence"
+    assert data["answer"] == "wrong"
+    assert data["correct"] is False
+
+
+@patch("src.web.session_state.request_correction")
+def test_get_state_feedback_step_includes_answer_and_correct(mock_request, tmp_path: Path):
+    mock_request.return_value = CorrectionResult(
+        available=True, uses_expression=True, needs_correction=False, corrected=None, explanation=None
+    )
+    client = _make_client(tmp_path)
+    client.post("/api/answer", json={"answer": "receive"})
+    client.post("/api/sentence", json={"sentence": "I received a gift."})
+    data = client.get("/api/state").get_json()
+    assert data["step"] == "feedback"
+    assert data["answer"] == "receive"
+    assert data["correct"] is True
+
+
+@patch("src.web.session_state.request_correction")
+def test_post_sentence_rejects_second_request_while_one_in_progress(mock_request, tmp_path: Path):
+    """The Flask test client is synchronous/single-request, so this
+    exercises the same reentrant simulation as the unit test: the mocked
+    correction_fn issues a second POST /api/sentence before the first
+    returns."""
+    client = _make_client(tmp_path)
+    client.post("/api/answer", json={"answer": "receive"})
+
+    inner_response = {}
+
+    def reentrant_correction(*args, **kwargs):
+        inner_response["resp"] = client.post("/api/sentence", json={"sentence": "a second one"})
+        return CorrectionResult(
+            available=True, uses_expression=True, needs_correction=False, corrected=None, explanation=None
+        )
+
+    mock_request.side_effect = reentrant_correction
+
+    outer_resp = client.post("/api/sentence", json={"sentence": "I received a gift."})
+
+    assert inner_response["resp"].status_code == 409
+    assert "error" in inner_response["resp"].get_json()
+    assert outer_resp.status_code == 200  # the original request still completed normally

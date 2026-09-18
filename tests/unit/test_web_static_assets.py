@@ -1,0 +1,57 @@
+"""Static-content assertions for src/web/templates/index.html and
+static/{style.css,app.js} (spec 004). These check that expected structure/
+class names/wording are actually present in the shipped files — not
+rendered output, per research.md's established "no JS test runner"
+convention. Deep visual verification stays manual (quickstart.md)."""
+
+from pathlib import Path
+
+TEMPLATE_PATH = Path(__file__).resolve().parents[2] / "src/web/templates/index.html"
+CSS_PATH = Path(__file__).resolve().parents[2] / "src/web/static/style.css"
+JS_PATH = Path(__file__).resolve().parents[2] / "src/web/static/app.js"
+
+
+def _section_bounds(html: str, section_id: str) -> tuple[int, int]:
+    start = html.index(f'id="{section_id}"')
+    open_tag_start = html.rindex("<section", 0, start)
+    close_tag = html.index("</section>", start)
+    return open_tag_start, close_tag
+
+
+def test_word_feedback_element_exists_outside_step_sections():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    assert 'id="word-feedback"' in html
+
+    feedback_pos = html.index('id="word-feedback"')
+    for section_id in ("recall-view", "sentence-view", "feedback-view"):
+        section_start, section_end = _section_bounds(html, section_id)
+        assert not (section_start < feedback_pos < section_end), (
+            f"word-feedback element must not be nested inside #{section_id}"
+        )
+
+
+def test_style_defines_feedback_color_classes():
+    css = CSS_PATH.read_text(encoding="utf-8")
+    assert ".feedback-correct" in css
+    assert ".feedback-incorrect" in css
+
+
+def test_app_js_uses_the_requested_feedback_wording():
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert "Correct:" in js
+    assert "Incorrect. The correct expression is:" in js
+
+
+def test_style_defines_field_row_layout():
+    css = CSS_PATH.read_text(encoding="utf-8")
+    assert ".field-row" in css
+
+
+def test_answer_and_sentence_forms_use_field_row():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    for form_id, input_id in (("answer-form", "answer-input"), ("sentence-form", "sentence-input")):
+        form_start = html.index(f'id="{form_id}"')
+        form_end = html.index("</form>", form_start)
+        form_html = html[form_start:form_end]
+        assert "field-row" in form_html, f"#{form_id} must contain a field-row wrapper"
+        assert f'id="{input_id}"' in form_html

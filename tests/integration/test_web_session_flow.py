@@ -116,3 +116,30 @@ def test_empty_vocab_pool_shows_empty_step_no_error(tmp_path: Path):
     resp = client.get("/api/state")
     assert resp.status_code == 200
     assert resp.get_json()["step"] == "empty"
+
+
+def test_word_feedback_and_sentence_prompt_both_present_after_submission(tmp_path: Path):
+    """spec 004 US1 Acceptance Scenario 2: word feedback and the
+    sentence-practice section must both be present at once — checked at
+    the data level (GET /api/state carries both), independent of how the
+    front end lays them out."""
+    client = _make_client(tmp_path, vocab_text="---\nenglish: receive\nchinese: 收到\n---\n")
+    client.post("/api/answer", json={"answer": "wrong"})
+    state = client.get("/api/state").get_json()
+    assert state["step"] == "sentence"
+    assert state["correct"] is False
+    assert state["answer"] == "wrong"
+    assert "accepted_expressions" in state  # the sentence prompt's own data
+
+
+def test_word_feedback_survives_a_simulated_reload_mid_sentence_step(tmp_path: Path):
+    """A 'reload' is just another GET /api/state on the same session; if
+    the answer/correct fields were only ever returned by the transient
+    POST /api/answer response, this would fail."""
+    client = _make_client(tmp_path, vocab_text="---\nenglish: receive\nchinese: 收到\n---\n")
+    client.post("/api/answer", json={"answer": "receive"})
+
+    reload_state = client.get("/api/state").get_json()
+    assert reload_state["step"] == "sentence"
+    assert reload_state["answer"] == "receive"
+    assert reload_state["correct"] is True
