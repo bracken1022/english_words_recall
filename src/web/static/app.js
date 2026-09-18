@@ -74,19 +74,25 @@
 
   function renderFeedback(feedback) {
     let text;
+    let state;
     if (!feedback.available) {
       text = "Sorry, sentence correction is unavailable right now.";
+      state = "unavailable";
     } else if (feedback.uses_expression === false) {
       text = "Your sentence does not use the target expression.";
+      state = "missing";
     } else if (feedback.needs_correction) {
       text = `Corrected: ${feedback.corrected}`;
       if (feedback.explanation) {
         text += ` — ${feedback.explanation}`;
       }
+      state = "corrected";
     } else {
       text = "Your sentence is already correct and natural.";
+      state = "clean";
     }
     feedbackResultEl.textContent = text;
+    feedbackResultEl.dataset.state = state;
   }
 
   async function fetchState() {

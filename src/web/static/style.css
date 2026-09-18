@@ -2,6 +2,29 @@
   box-sizing: border-box;
 }
 
+:root {
+  --paper: #eaeeec;
+  --card: #fcfbf6;
+  --ink-rgb: 27, 42, 74;
+  --red: #a8281f;
+  --red-tint: #f5e4e1;
+  --rule: #c7cdcb;
+
+  --font-serif: "Songti SC", "STSong", "Noto Serif SC", Georgia, "Times New Roman", serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Segoe UI", system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #12161c;
+    --card: #1b222b;
+    --ink-rgb: 231, 227, 214;
+    --red: #e5573e;
+    --red-tint: #3a241f;
+    --rule: #333e48;
+  }
+}
+
 /* Restores the HTML `hidden` attribute's guarantee: without this, an
    author rule that sets `display` on the same element (section, .spinner,
    below) silently overrides `hidden`, so every step's content and the
@@ -13,12 +36,26 @@
   display: none !important;
 }
 
+html {
+  background: var(--paper);
+}
+
 body {
-  font-family: system-ui, sans-serif;
+  font-family: var(--font-sans);
   margin: 0;
   padding: 0;
-  background: #fafafa;
-  color: #222;
+  min-height: 100vh;
+  background-color: var(--paper);
+  /* Faint ruled-paper texture behind the card — an exercise-book page,
+     not a decorative pattern; kept low-contrast enough to never compete
+     with content sitting on the solid card surface above it. */
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 27px,
+    rgba(var(--ink-rgb), 0.05) 28px
+  );
+  color: rgb(var(--ink-rgb));
 }
 
 /* Mobile-first base layout: single column, full width, generous padding
@@ -29,6 +66,48 @@ body {
   max-width: 100%;
 }
 
+.sheet {
+  position: relative;
+  background: var(--card);
+  border: 1px solid rgba(var(--ink-rgb), 0.7);
+  border-radius: 4px;
+}
+
+/* The margin rule printed down the left edge of Chinese school exercise
+   paper — a real, recognizable device from the subject's own materials,
+   not an arbitrary accent line. */
+.sheet::before {
+  content: "";
+  position: absolute;
+  top: 22px;
+  bottom: 22px;
+  left: 26px;
+  width: 2px;
+  background: var(--red);
+  opacity: 0.55;
+}
+
+.sheet__content {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  padding: 26px 22px 30px 46px;
+}
+
+.letterhead {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: rgba(var(--ink-rgb), 0.75);
+}
+
+.prose {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.55;
+  color: rgb(var(--ink-rgb));
+}
+
 section {
   display: flex;
   flex-direction: column;
@@ -36,34 +115,89 @@ section {
 }
 
 .meaning {
-  font-size: 1.25rem;
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: clamp(1.9rem, 6vw, 2.4rem);
+  line-height: 1.4;
+  color: rgb(var(--ink-rgb));
 }
 
+/* The word actually being tested, marked the way a textbook marks a
+   target vocabulary item: a double underline, not a color or bold
+   accent on an otherwise plain sentence. */
+.target-slot {
+  display: inline-block;
+  width: fit-content;
+  font-family: var(--font-serif);
+  font-size: clamp(1.5rem, 5vw, 1.9rem);
+  color: rgb(var(--ink-rgb));
+  border-bottom: 4px double rgb(var(--ink-rgb));
+  padding: 2px 4px 6px;
+  margin: -6px 0 0;
+}
+
+label {
+  display: block;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: rgba(var(--ink-rgb), 0.75);
+  margin-bottom: 6px;
+}
+
+/* Inputs read as a line to write on, not a boxed form field. */
 input[type="text"] {
-  font-size: 1rem;
-  padding: 12px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  padding: 8px 4px;
+  border: none;
+  border-bottom: 2px solid var(--rule);
+  border-radius: 0;
+  background: transparent;
+  color: rgb(var(--ink-rgb));
+}
+
+input[type="text"]:focus {
+  outline: none;
+  border-bottom-color: var(--red);
+}
+
+input[type="text"]:focus-visible {
+  outline: 3px solid var(--red);
+  outline-offset: 4px;
 }
 
 button {
-  font-size: 1rem;
-  padding: 12px 16px;
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  font-weight: 600;
+  padding: 12px 18px;
   min-height: 44px; /* touch target */
-  border: none;
-  border-radius: 6px;
-  background: #2563eb;
-  color: #fff;
+  border: 1px solid rgb(var(--ink-rgb));
+  border-radius: 3px;
+  background: rgb(var(--ink-rgb));
+  color: var(--card);
   cursor: pointer;
 }
 
 button:active {
-  background: #1e4fc4;
+  background: var(--red);
+  border-color: var(--red);
 }
 
 button:disabled {
-  background: #9ca3af;
+  background: transparent;
+  color: rgba(var(--ink-rgb), 0.45);
+  border-color: var(--rule);
   cursor: not-allowed;
+}
+
+button:focus-visible {
+  outline: 3px solid var(--red);
+  outline-offset: 2px;
+}
+
+#continue-button {
+  align-self: flex-start;
 }
 
 /* Groups an <input> with its submit <button> as one visual row instead of
@@ -73,7 +207,7 @@ button:disabled {
   display: flex;
   flex-direction: row;
   align-items: stretch;
-  gap: 8px;
+  gap: 10px;
   margin-top: 4px;
 }
 
@@ -82,46 +216,139 @@ button:disabled {
   min-width: 0;
 }
 
-.feedback-correct {
-  color: #15803d;
+/* The grading mark: one red ink stamp, distinguished by symbol (✓ / ✗)
+   rather than by color — the actual convention of a teacher's red pen,
+   and incidentally more accessible than a red/green pairing. */
+#word-feedback {
+  align-self: flex-start;
+  width: fit-content;
+  max-width: 100%;
+  font-family: var(--font-sans);
+  font-size: 0.92rem;
   font-weight: 600;
+  line-height: 1.4;
+  color: var(--red);
+  background: var(--red-tint);
+  border: 3px solid var(--red);
+  border-radius: 6px;
+  padding: 8px 14px;
+  margin: 0;
+  transform: rotate(-2deg);
 }
 
-.feedback-incorrect {
-  color: #b91c1c;
-  font-weight: 600;
+#word-feedback::before {
+  margin-right: 6px;
+}
+
+.feedback-correct::before {
+  content: "\2713";
+}
+
+.feedback-incorrect::before {
+  content: "\2717";
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  #word-feedback:not([hidden]) {
+    animation: stamp-land 0.2s ease-out;
+  }
+}
+
+.stamp {
+  align-self: flex-start;
+  width: fit-content;
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--red);
+  border: 3px solid var(--red);
+  border-radius: 6px;
+  padding: 6px 16px;
+  transform: rotate(-4deg);
+}
+
+.stamp--done::before {
+  content: "\2713";
+  margin-right: 6px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .stamp--done {
+    animation: stamp-land 0.45s cubic-bezier(0.2, 0.8, 0.3, 1.1);
+  }
+}
+
+@keyframes stamp-land {
+  from {
+    transform: rotate(-4deg) scale(1.5);
+    opacity: 0;
+  }
+  to {
+    transform: rotate(-4deg) scale(1);
+    opacity: 1;
+  }
 }
 
 .warnings {
-  background: #fff3cd;
-  color: #664d03;
-  padding: 8px 12px;
-  margin-bottom: 12px;
-  border-radius: 4px;
+  border-left: 4px solid var(--red);
+  background: var(--red-tint);
+  color: rgb(var(--ink-rgb));
+  font-size: 0.9rem;
+  line-height: 1.45;
+  padding: 10px 14px;
+  border-radius: 3px;
+}
+
+#feedback-result {
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  line-height: 1.6;
+  color: rgb(var(--ink-rgb));
+  border-left: 3px solid var(--rule);
+  padding: 2px 0 2px 14px;
+}
+
+#feedback-result[data-state="corrected"],
+#feedback-result[data-state="missing"] {
+  border-left-color: var(--red);
+}
+
+#feedback-result[data-state="unavailable"] {
+  color: rgba(var(--ink-rgb), 0.65);
+  font-style: italic;
 }
 
 .spinner {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin-top: 12px;
-  color: #444;
+  margin-top: 0;
+  color: rgb(var(--ink-rgb));
+  font-size: 0.9rem;
 }
 
-.spinner::before {
-  content: "";
-  width: 18px;
-  height: 18px;
+.spinner__dot {
+  width: 10px;
+  height: 10px;
   flex-shrink: 0;
-  border: 3px solid #ccc;
-  border-top-color: #444;
   border-radius: 50%;
-  animation: spin 0.8s linear infinite;
+  background: var(--red);
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
+@media (prefers-reduced-motion: no-preference) {
+  .spinner__dot {
+    animation: ink-pulse 1s ease-in-out infinite;
+  }
+}
+
+@keyframes ink-pulse {
+  0%, 100% {
+    transform: scale(0.85);
+    opacity: 0.5;
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 1;
   }
 }
 
@@ -129,14 +356,22 @@ button:disabled {
    stretching full width. No multi-column layout is introduced at any
    width, and nothing here reduces below the mobile-first rules above. */
 @media (min-width: 600px) {
-  body {
+  #app {
     display: flex;
     justify-content: center;
+    padding: 48px 24px;
   }
 
-  #app {
-    max-width: 600px;
+  .sheet {
+    max-width: 560px;
     width: 100%;
-    padding: 32px 24px;
+  }
+
+  .sheet::before {
+    left: 34px;
+  }
+
+  .sheet__content {
+    padding: 34px 34px 38px 60px;
   }
 }

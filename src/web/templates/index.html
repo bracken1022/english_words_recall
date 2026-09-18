@@ -8,45 +8,53 @@
 </head>
 <body>
   <main id="app">
-    <div id="warnings" class="warnings" hidden></div>
+    <div class="sheet">
+      <div class="sheet__content">
+        <p class="letterhead">English Tutor</p>
 
-    <section id="empty-view" hidden>
-      <p>No vocabulary items are available for this session.</p>
-    </section>
+        <div id="warnings" class="warnings" hidden></div>
 
-    <section id="complete-view" hidden>
-      <p>Session complete — you've gone through every item.</p>
-    </section>
+        <section id="empty-view" hidden>
+          <p class="prose">No words are waiting. Add some to the vocabulary folder to start a session.</p>
+        </section>
 
-    <section id="recall-view" hidden>
-      <p class="meaning">Chinese meaning: <span id="chinese"></span></p>
-      <form id="answer-form">
-        <label for="answer-input">Your answer (English):</label>
-        <div class="field-row">
-          <input id="answer-input" name="answer" type="text" autocomplete="off">
-          <button type="submit">Submit</button>
-        </div>
-      </form>
-    </section>
+        <section id="complete-view" hidden>
+          <div class="stamp stamp--done" aria-hidden="true">done</div>
+          <p class="prose">Session complete — you've gone through every word.</p>
+        </section>
 
-    <p id="word-feedback" hidden></p>
+        <section id="recall-view" hidden>
+          <p class="meaning"><span id="chinese"></span></p>
+          <form id="answer-form">
+            <label for="answer-input">Write the English word</label>
+            <div class="field-row">
+              <input id="answer-input" name="answer" type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
+              <button type="submit">Check</button>
+            </div>
+          </form>
+        </section>
 
-    <section id="sentence-view" hidden>
-      <p>Write a sentence using "<span id="target-expression"></span>":</p>
-      <form id="sentence-form">
-        <label for="sentence-input">Your sentence:</label>
-        <div class="field-row">
-          <input id="sentence-input" name="sentence" type="text" autocomplete="off">
-          <button type="submit">Submit</button>
-        </div>
-      </form>
-      <div id="spinner" class="spinner" hidden aria-live="polite">Reviewing your sentence...</div>
-    </section>
+        <p id="word-feedback" aria-live="polite" hidden></p>
 
-    <section id="feedback-view" hidden>
-      <div id="feedback-result"></div>
-      <button id="continue-button" type="button">Continue</button>
-    </section>
+        <section id="sentence-view" hidden>
+          <p class="prose">Write a sentence using</p>
+          <p class="target-slot"><span id="target-expression"></span></p>
+          <form id="sentence-form">
+            <label for="sentence-input">Your sentence</label>
+            <div class="field-row">
+              <input id="sentence-input" name="sentence" type="text" autocomplete="off" spellcheck="false">
+              <button type="submit">Review</button>
+            </div>
+          </form>
+          <div id="spinner" class="spinner" hidden aria-live="polite"><span class="spinner__dot" aria-hidden="true"></span>Reviewing your sentence...</div>
+        </section>
+
+        <section id="feedback-view" hidden>
+          <div id="feedback-result" aria-live="polite"></div>
+          <button id="continue-button" type="button">Continue</button>
+        </section>
+      </div>
+    </div>
   </main>
 
   <script src="{{ url_for('static', filename='app.js') }}"></script>
