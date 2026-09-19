@@ -18,6 +18,7 @@
   const spinnerEl = document.getElementById("spinner");
   const feedbackResultEl = document.getElementById("feedback-result");
   const continueButton = document.getElementById("continue-button");
+  const sessionTallyEl = document.getElementById("session-tally");
 
   let lastAcceptedExpressions = [];
 
@@ -69,7 +70,17 @@
       spinnerEl.hidden = true;
     } else if (state.step === "feedback") {
       renderFeedback(state.feedback);
+    } else if (state.step === "complete") {
+      renderTally(state.total, state.correct);
     }
+  }
+
+  function renderTally(total, correct) {
+    const mistakes = total - correct;
+    sessionTallyEl.textContent =
+      mistakes === 0
+        ? `You recalled all ${total} words correctly.`
+        : `You recalled ${correct} of ${total} words correctly — ${mistakes} to review.`;
   }
 
   function renderFeedback(feedback) {

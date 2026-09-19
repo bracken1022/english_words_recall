@@ -28,6 +28,7 @@ class PracticeSession:
         self.pending_attempt: dict | None = None
         self.last_correction: CorrectionResult | None = None
         self._review_in_progress = False
+        self.correct_count = 0
 
         items, warnings = load_vocabulary(vocab_dir)
         self.warnings = warnings
@@ -112,6 +113,9 @@ class PracticeSession:
         if self.step != "feedback":
             raise WrongStepError("not ready to continue")
 
+        if self.pending_attempt["correct"]:
+            self.correct_count += 1
+
         self.pending_attempt = None
         self.last_correction = None
         self.current_index += 1
@@ -119,7 +123,11 @@ class PracticeSession:
 
     def state(self) -> dict:
         base = {"step": self.step, "warnings": self.warnings}
-        if self.step in ("empty", "complete"):
+        if self.step == "complete":
+            base["total"] = len(self.items)
+            base["correct"] = self.correct_count
+            return base
+        if self.step == "empty":
             return base
 
         item = self.current_item
