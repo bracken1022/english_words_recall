@@ -56,6 +56,14 @@ def create_app(
             return jsonify({"error": str(exc)}), 409
         return jsonify(result)
 
+    @app.post("/api/skip")
+    def post_skip():
+        try:
+            session.skip_sentence()
+        except WrongStepError as exc:
+            return jsonify({"error": str(exc)}), 409
+        return jsonify(session.state())
+
     @app.post("/api/continue")
     def post_continue():
         try:

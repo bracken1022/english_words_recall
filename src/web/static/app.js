@@ -125,6 +125,17 @@
 
   sentenceForm.addEventListener("submit", async (event) => {
     event.preventDefault();
+
+    if (sentenceInput.value.trim() === "") {
+      const shouldSkip = confirm("You didn't write a sentence — skip this word?");
+      if (!shouldSkip) {
+        return;
+      }
+      await fetch("/api/skip", { method: "POST" });
+      await fetchState();
+      return;
+    }
+
     spinnerEl.hidden = false;
     sentenceInput.disabled = true;
     sentenceSubmitButton.disabled = true;

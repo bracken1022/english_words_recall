@@ -129,6 +129,75 @@ def test_state_includes_answer_and_correct_for_feedback_step(tmp_path: Path):
     assert state["correct"] is True
 
 
+def test_skip_sentence_rejected_when_not_in_sentence_step(tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md")
+    with pytest.raises(WrongStepError):
+        session.skip_sentence()  # still in "recall"
+
+    session.submit_answer("receive")
+    session.submit_sentence("I received a gift.", base_url="x", model="m", correction_fn=lambda *a, **k: _stub())
+    assert session.step == "feedback"
+    with pytest.raises(WrongStepError):
+        session.skip_sentence()  # now in "feedback", not "sentence"
+
+
+def test_skip_sentence_advances_to_recall_for_next_item(tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md")
+    session.submit_answer("receive")
+    assert session.step == "sentence"
+
+    session.skip_sentence()
+    assert session.step == "recall"
+    assert session.current_index == 1
+    assert session.pending_attempt is None
+
+
+def test_skip_sentence_advances_to_complete_on_last_item(tmp_path: Path):
+    vocab_dir = tmp_path / "one_item"
+    vocab_dir.mkdir()
+    (vocab_dir / "unit1.md").write_text("---\nenglish: receive\nchinese: 收到\n---\n")
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md")
+    session.submit_answer("receive")
+
+    session.skip_sentence()
+    assert session.step == "complete"
+
+
+def test_skip_sentence_updates_correct_count_from_recall_outcome_only(tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md")
+
+    session.submit_answer("receive")  # correct
+    session.skip_sentence()
+    assert session.correct_count == 1
+
+    session.submit_answer("wrong")  # incorrect
+    session.skip_sentence()
+    assert session.correct_count == 1  # unchanged
+    assert session.step == "complete"
+    state = session.state()
+    assert state["total"] == 2
+    assert state["correct"] == 1
+
+
+def test_skip_sentence_writes_practice_attempt_without_sentence_or_feedback(tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)
+    progress_file = tmp_path / "progress.md"
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=progress_file)
+
+    session.submit_answer("receive")
+    session.skip_sentence()
+
+    progress_text = progress_file.read_text(encoding="utf-8")
+    assert "item: receive" in progress_text
+    assert "answer: receive" in progress_text
+    assert "correct: true" in progress_text
+    assert "sentence:" not in progress_text
+    assert "feedback:" not in progress_text
+
+
 def test_concurrent_sentence_submission_is_rejected(tmp_path: Path):
     """Simulates 'a second request arrives while the first is still
     running' deterministically: correction_fn re-enters submit_sentence on

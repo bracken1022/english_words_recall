@@ -107,6 +107,25 @@ class PracticeSession:
             "explanation": result.explanation,
         }
 
+    def skip_sentence(self) -> None:
+        """Skip the sentence-writing step for the current item without a
+        correction request, recording the recall outcome as-is (spec 006).
+        Goes straight from "sentence" to "recall"/"complete", never
+        visiting "feedback" — see data-model.md's state-machine table."""
+        if self.step != "sentence":
+            raise WrongStepError("not awaiting a sentence")
+
+        attempt = PracticeAttempt(**self.pending_attempt)
+        append_attempt(self.progress_file, attempt)
+
+        if self.pending_attempt["correct"]:
+            self.correct_count += 1
+
+        self.pending_attempt = None
+        self.last_correction = None
+        self.current_index += 1
+        self.step = "complete" if self.current_index >= len(self.items) else "recall"
+
     def continue_to_next(self) -> None:
         if self.step == "complete":
             return

@@ -75,6 +75,47 @@ def test_full_recall_sentence_feedback_cycle_writes_progress_log(mock_request, t
     assert state["step"] == "complete"
 
 
+@patch("src.web.session_state.request_correction")
+def test_skipped_word_counts_correctly_and_is_distinguishable_in_history(mock_request, tmp_path: Path):
+    """Spec 006 US2: a skipped word's recall outcome still counts toward
+    the end-of-session tally, and its progress-log entry is distinguishable
+    from a word where a sentence was actually submitted."""
+    mock_request.return_value = CorrectionResult(
+        available=True, uses_expression=True, needs_correction=False, corrected=None, explanation=None
+    )
+    vocab_text = (
+        "---\nenglish: receive\nchinese: 收到\n---\n\n"
+        "---\nenglish: give up\nchinese: 放弃\n---\n"
+    )
+    progress_file = tmp_path / "progress.md"
+    vocab_dir = tmp_path / "vocab"
+    vocab_dir.mkdir()
+    (vocab_dir / "unit1.md").write_text(vocab_text)
+    app = create_app(vocab_dir=vocab_dir, progress_file=progress_file, group=None,
+                      ollama_url="http://localhost:11434", model="qwen3:14b")
+    client = app.test_client()
+
+    # Word 1: answered correctly, sentence actually submitted.
+    client.post("/api/answer", json={"answer": "receive"})
+    client.post("/api/sentence", json={"sentence": "I received a gift."})
+    client.post("/api/continue")
+
+    # Word 2: answered incorrectly, sentence step skipped.
+    client.post("/api/answer", json={"answer": "wrong"})
+    resp = client.post("/api/skip")
+    state = resp.get_json()
+
+    assert state["step"] == "complete"
+    assert state["total"] == 2
+    assert state["correct"] == 1  # only word 1 was recalled correctly; skip doesn't change this
+
+    progress_text = progress_file.read_text(encoding="utf-8")
+    completed_block = progress_text[: progress_text.index("give up")]
+    skipped_block = progress_text[progress_text.index("give up") :]
+    assert "sentence:" in completed_block and "feedback:" in completed_block
+    assert "sentence:" not in skipped_block and "feedback:" not in skipped_block
+
+
 def test_default_host_is_lan_reachable(tmp_path: Path):
     from src.web.__main__ import build_arg_parser
 

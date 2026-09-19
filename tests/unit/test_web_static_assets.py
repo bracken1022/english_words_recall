@@ -74,6 +74,16 @@ def test_hidden_attribute_override_rule_exists():
     )
 
 
+def test_app_js_confirms_before_skipping_an_empty_sentence():
+    """Spec 006: submitting the sentence step with an empty/whitespace-only
+    sentence must show a confirmation prompt and call POST /api/skip,
+    rather than silently sending nothing off for correction."""
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert ".trim()" in js
+    assert "confirm(" in js
+    assert "/api/skip" in js
+
+
 def test_spinner_uses_hidden_attribute_not_a_separate_mechanism():
     """Regression guard (spec 005, User Story 2): confirms the spinner is
     actually covered by the [hidden] override above, rather than using

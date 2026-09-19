@@ -190,6 +190,41 @@ def test_get_state_feedback_step_includes_answer_and_correct(mock_request, tmp_p
     assert data["correct"] is True
 
 
+def test_post_skip_rejected_when_not_awaiting_sentence(tmp_path: Path):
+    client = _make_client(tmp_path)  # still in "recall"
+    resp = client.post("/api/skip")
+    assert resp.status_code == 409
+    assert "error" in resp.get_json()
+
+
+@patch("src.web.session_state.request_correction")
+def test_post_skip_advances_to_next_recall_step(mock_request, tmp_path: Path):
+    client = _make_client(
+        tmp_path,
+        vocab_text="---\nenglish: receive\nchinese: 收到\n---\n\n---\nenglish: give up\nchinese: 放弃\n---\n",
+    )
+    client.post("/api/answer", json={"answer": "receive"})
+    resp = client.post("/api/skip")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["step"] == "recall"
+    assert data["chinese"] == "放弃"
+    mock_request.assert_not_called()
+
+
+@patch("src.web.session_state.request_correction")
+def test_post_skip_on_last_item_reaches_complete_with_tally(mock_request, tmp_path: Path):
+    client = _make_client(tmp_path)  # single "receive" item
+    client.post("/api/answer", json={"answer": "receive"})
+    resp = client.post("/api/skip")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["step"] == "complete"
+    assert data["total"] == 1
+    assert data["correct"] == 1
+    mock_request.assert_not_called()
+
+
 @patch("src.web.session_state.request_correction")
 def test_post_sentence_rejects_second_request_while_one_in_progress(mock_request, tmp_path: Path):
     """The Flask test client is synchronous/single-request, so this
