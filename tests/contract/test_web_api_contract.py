@@ -7,7 +7,11 @@ from src.services.llm_client import CorrectionResult
 from src.web.app import create_app
 
 
-def _make_client(tmp_path: Path, vocab_text: str | None = "---\nenglish: receive\nchinese: 收到\n---\n"):
+def _make_client(
+    tmp_path: Path,
+    vocab_text: str | None = "---\nenglish: receive\nchinese: 收到\n---\n",
+    offer_choice: bool = False,
+):
     vocab_dir = tmp_path / "vocab"
     vocab_dir.mkdir()
     if vocab_text is not None:
@@ -18,6 +22,7 @@ def _make_client(tmp_path: Path, vocab_text: str | None = "---\nenglish: receive
         group=None,
         ollama_url="http://localhost:11434",
         model="qwen3:14b",
+        offer_choice=offer_choice,
     )
     return app.test_client()
 
@@ -188,6 +193,127 @@ def test_get_state_feedback_step_includes_answer_and_correct(mock_request, tmp_p
     assert data["step"] == "feedback"
     assert data["answer"] == "receive"
     assert data["correct"] is True
+
+
+def test_post_select_rejected_when_not_choosing(tmp_path: Path):
+    client = _make_client(tmp_path)  # offer_choice=False, starts in "recall"
+    resp = client.post("/api/select", json={"collection": None})
+    assert resp.status_code == 409
+    assert "error" in resp.get_json()
+
+
+def test_post_select_missing_collection_key_is_bad_request(tmp_path: Path):
+    client = _make_client(
+        tmp_path,
+        vocab_text="---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n",
+        offer_choice=True,
+    )
+    resp = client.post("/api/select", json={})
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "missing 'collection'"
+
+
+def test_post_select_named_collection_scopes_the_session(tmp_path: Path):
+    client = _make_client(
+        tmp_path,
+        vocab_text=(
+            "---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n\n"
+            "---\nenglish: tailor\nchinese: 裁缝\ngroup: t-words\n---\n"
+        ),
+        offer_choice=True,
+    )
+    assert client.get("/api/state").get_json()["step"] == "choose"
+
+    resp = client.post("/api/select", json={"collection": "unit1"})
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["step"] == "recall"
+    assert data["chinese"] == "收到"
+
+
+def test_post_select_null_collection_practices_everything(tmp_path: Path):
+    client = _make_client(
+        tmp_path,
+        vocab_text=(
+            "---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n\n"
+            "---\nenglish: tailor\nchinese: 裁缝\ngroup: t-words\n---\n"
+        ),
+        offer_choice=True,
+    )
+    resp = client.post("/api/select", json={"collection": None})
+    assert resp.status_code == 200
+    assert resp.get_json()["step"] == "recall"
+
+
+def test_post_select_does_not_touch_progress_log(tmp_path: Path):
+    progress_file = tmp_path / "progress.md"
+    client = _make_client(
+        tmp_path,
+        vocab_text="---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n",
+        offer_choice=True,
+    )
+    client.post("/api/select", json={"collection": "unit1"})
+    assert not progress_file.exists()
+
+
+def test_get_state_complete_step_can_restart_true_when_interactive(tmp_path: Path):
+    client = _make_client(
+        tmp_path,
+        vocab_text="---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n",
+        offer_choice=True,
+    )
+    client.post("/api/select", json={"collection": "unit1"})
+    client.post("/api/answer", json={"answer": "receive"})
+    client.post("/api/skip")
+    data = client.get("/api/state").get_json()
+    assert data["step"] == "complete"
+    assert data["can_restart"] is True
+
+
+def test_get_state_complete_step_can_restart_false_when_group_locked(tmp_path: Path):
+    client = _make_client(tmp_path)  # offer_choice=False, no picker at all
+    client.post("/api/answer", json={"answer": "receive"})
+    client.post("/api/skip")
+    data = client.get("/api/state").get_json()
+    assert data["step"] == "complete"
+    assert data["can_restart"] is False
+
+
+def test_post_restart_rejected_when_not_complete(tmp_path: Path):
+    client = _make_client(
+        tmp_path,
+        vocab_text="---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n",
+        offer_choice=True,
+    )
+    resp = client.post("/api/restart")
+    assert resp.status_code == 409
+
+
+def test_post_restart_rejected_when_group_locked(tmp_path: Path):
+    client = _make_client(tmp_path)  # offer_choice=False
+    client.post("/api/answer", json={"answer": "receive"})
+    client.post("/api/skip")
+    assert client.get("/api/state").get_json()["step"] == "complete"
+    resp = client.post("/api/restart")
+    assert resp.status_code == 409
+
+
+def test_post_restart_returns_to_choose(tmp_path: Path):
+    client = _make_client(
+        tmp_path,
+        vocab_text="---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n",
+        offer_choice=True,
+    )
+    client.post("/api/select", json={"collection": "unit1"})
+    client.post("/api/answer", json={"answer": "receive"})
+    client.post("/api/skip")
+    assert client.get("/api/state").get_json()["step"] == "complete"
+
+    resp = client.post("/api/restart")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["step"] == "choose"
+    assert data["collections"][0]["key"] is None
 
 
 def test_post_skip_rejected_when_not_awaiting_sentence(tmp_path: Path):

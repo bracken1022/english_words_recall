@@ -196,7 +196,41 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
-#continue-button {
+/* The collection-choice list: quieter than the solid ink buttons used
+   elsewhere (a repeated wall of them would fight the "one bold accent"
+   principle) — each entry reads as a ruled line item instead. */
+.choose-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.choose-list button {
+  width: 100%;
+  min-height: 44px;
+  background: transparent;
+  color: rgb(var(--ink-rgb));
+  border: none;
+  border-bottom: 1px solid var(--rule);
+  border-radius: 0;
+  padding: 12px 4px;
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  font-weight: 400;
+  text-align: left;
+}
+
+.choose-list button:hover,
+.choose-list button:focus-visible {
+  color: var(--red);
+  border-bottom-color: var(--red);
+}
+
+.choose-list button:active {
+  background: var(--red-tint);
+}
+
+#continue-button,
+#restart-button {
   align-self: flex-start;
 }
 

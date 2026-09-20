@@ -7,7 +7,7 @@ from src.services.llm_client import CorrectionResult
 from src.web.app import create_app
 
 
-def _make_client(tmp_path: Path, vocab_text: str | None = None):
+def _make_client(tmp_path: Path, vocab_text: str | None = None, offer_choice: bool = False):
     if vocab_text is None:
         vocab_text = (
             "---\nenglish: receive\nchinese: 收到\n---\n\n"
@@ -22,6 +22,7 @@ def _make_client(tmp_path: Path, vocab_text: str | None = None):
         group=None,
         ollama_url="http://localhost:11434",
         model="qwen3:14b",
+        offer_choice=offer_choice,
     )
     return app.test_client()
 
@@ -114,6 +115,54 @@ def test_skipped_word_counts_correctly_and_is_distinguishable_in_history(mock_re
     skipped_block = progress_text[progress_text.index("give up") :]
     assert "sentence:" in completed_block and "feedback:" in completed_block
     assert "sentence:" not in skipped_block and "feedback:" not in skipped_block
+
+
+def test_full_choose_practice_complete_restart_loop(tmp_path: Path):
+    """Spec 007: choose -> recall -> ... -> complete -> restart -> choose,
+    through the real Flask test client."""
+    vocab_text = (
+        "---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n\n"
+        "---\nenglish: tailor\nchinese: 裁缝\ngroup: t-words\n---\n"
+    )
+    client = _make_client(tmp_path, vocab_text=vocab_text, offer_choice=True)
+
+    state = client.get("/api/state").get_json()
+    assert state["step"] == "choose"
+    assert {c["key"] for c in state["collections"]} == {None, "unit1", "t-words"}
+
+    client.post("/api/select", json={"collection": "unit1"})
+    assert client.get("/api/state").get_json()["step"] == "recall"
+
+    client.post("/api/answer", json={"answer": "receive"})
+    resp = client.post("/api/skip")
+    state = resp.get_json()
+    assert state["step"] == "complete"
+    assert state["can_restart"] is True
+
+    resp = client.post("/api/restart")
+    assert resp.status_code == 200
+    assert resp.get_json()["step"] == "choose"
+
+
+def test_group_locked_web_ui_never_shows_choose(tmp_path: Path):
+    """A --group-started server behaves exactly as it did before spec 007:
+    no "choose" step, and both new endpoints reject."""
+    vocab_dir = tmp_path / "vocab"
+    vocab_dir.mkdir()
+    (vocab_dir / "unit1.md").write_text("---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n")
+    app = create_app(
+        vocab_dir=vocab_dir,
+        progress_file=tmp_path / "progress.md",
+        group="unit1",
+        ollama_url="http://localhost:11434",
+        model="qwen3:14b",
+        offer_choice=True,  # a real group always wins, even if this is also set
+    )
+    client = app.test_client()
+
+    assert client.get("/api/state").get_json()["step"] == "recall"
+    assert client.post("/api/select", json={"collection": None}).status_code == 409
+    assert client.post("/api/restart").status_code == 409
 
 
 def test_default_host_is_lan_reachable(tmp_path: Path):

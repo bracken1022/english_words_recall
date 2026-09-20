@@ -1,11 +1,13 @@
 (() => {
   const views = {
+    choose: document.getElementById("choose-view"),
     empty: document.getElementById("empty-view"),
     recall: document.getElementById("recall-view"),
     sentence: document.getElementById("sentence-view"),
     feedback: document.getElementById("feedback-view"),
     complete: document.getElementById("complete-view"),
   };
+  const chooseListEl = document.getElementById("choose-list");
   const warningsEl = document.getElementById("warnings");
   const chineseEl = document.getElementById("chinese");
   const targetExpressionEl = document.getElementById("target-expression");
@@ -19,6 +21,7 @@
   const feedbackResultEl = document.getElementById("feedback-result");
   const continueButton = document.getElementById("continue-button");
   const sessionTallyEl = document.getElementById("session-tally");
+  const restartButton = document.getElementById("restart-button");
 
   let lastAcceptedExpressions = [];
 
@@ -72,6 +75,27 @@
       renderFeedback(state.feedback);
     } else if (state.step === "complete") {
       renderTally(state.total, state.correct);
+      restartButton.hidden = !state.can_restart;
+    } else if (state.step === "choose") {
+      renderChoose(state.collections);
+    }
+  }
+
+  function renderChoose(collections) {
+    chooseListEl.innerHTML = "";
+    for (const entry of collections) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.textContent = `${entry.label} (${entry.count})`;
+      button.addEventListener("click", async () => {
+        await fetch("/api/select", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ collection: entry.key }),
+        });
+        await fetchState();
+      });
+      chooseListEl.appendChild(button);
     }
   }
 
@@ -156,6 +180,11 @@
 
   continueButton.addEventListener("click", async () => {
     const resp = await fetch("/api/continue", { method: "POST" });
+    renderState(await resp.json());
+  });
+
+  restartButton.addEventListener("click", async () => {
+    const resp = await fetch("/api/restart", { method: "POST" });
     renderState(await resp.json());
   });
 

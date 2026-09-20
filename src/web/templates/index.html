@@ -14,6 +14,11 @@
 
         <div id="warnings" class="warnings" hidden></div>
 
+        <section id="choose-view" hidden>
+          <p class="prose">Which words do you want to practice?</p>
+          <div id="choose-list" class="choose-list"></div>
+        </section>
+
         <section id="empty-view" hidden>
           <p class="prose">No words are waiting. Add some to the vocabulary folder to start a session.</p>
         </section>
@@ -22,6 +27,7 @@
           <div class="stamp stamp--done" aria-hidden="true">done</div>
           <p class="prose">Session complete — you've gone through every word.</p>
           <p id="session-tally" class="prose"></p>
+          <button id="restart-button" type="button" hidden>Practice again</button>
         </section>
 
         <section id="recall-view" hidden>

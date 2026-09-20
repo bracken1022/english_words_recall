@@ -15,9 +15,12 @@ def create_app(
     group: str | None = None,
     ollama_url: str = "http://localhost:11434",
     model: str = "qwen3:14b",
+    offer_choice: bool = False,
 ) -> Flask:
     app = Flask(__name__)
-    session = PracticeSession(vocab_dir=vocab_dir, progress_file=progress_file, group=group)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=progress_file, group=group, offer_choice=offer_choice
+    )
     app.config["OLLAMA_URL"] = ollama_url
     app.config["MODEL"] = model
     app.practice_session = session
@@ -56,10 +59,29 @@ def create_app(
             return jsonify({"error": str(exc)}), 409
         return jsonify(result)
 
+    @app.post("/api/select")
+    def post_select():
+        body = request.get_json(silent=True) or {}
+        if "collection" not in body:
+            return jsonify({"error": "missing 'collection'"}), 400
+        try:
+            session.select_collection(body["collection"])
+        except WrongStepError as exc:
+            return jsonify({"error": str(exc)}), 409
+        return jsonify(session.state())
+
     @app.post("/api/skip")
     def post_skip():
         try:
             session.skip_sentence()
+        except WrongStepError as exc:
+            return jsonify({"error": str(exc)}), 409
+        return jsonify(session.state())
+
+    @app.post("/api/restart")
+    def post_restart():
+        try:
+            session.restart()
         except WrongStepError as exc:
             return jsonify({"error": str(exc)}), 409
         return jsonify(session.state())

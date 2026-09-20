@@ -13,7 +13,9 @@ from src.services.matcher import grade_answer
 from src.services.progress_log import append_attempt
 from src.services.vocabulary_loader import load_vocabulary
 
-Step = str  # "empty" | "recall" | "sentence" | "feedback" | "complete"
+Step = str  # "empty" | "choose" | "recall" | "sentence" | "feedback" | "complete"
+
+UNGROUPED_KEY = "__ungrouped__"
 
 
 class WrongStepError(Exception):
@@ -21,8 +23,22 @@ class WrongStepError(Exception):
 
 
 class PracticeSession:
-    def __init__(self, vocab_dir: Path, progress_file: Path, group: str | None = None):
+    def __init__(
+        self,
+        vocab_dir: Path,
+        progress_file: Path,
+        group: str | None = None,
+        offer_choice: bool = False,
+    ):
+        """*offer_choice* opts into the interactive collection-choice step
+        (spec 007); it defaults to False so every existing caller that
+        doesn't know about this feature keeps today's exact behavior
+        (group=None -> immediate, unfiltered "recall"). Only
+        src/web/__main__.py sets it, and only when no --group was given —
+        an explicit *group* always wins over *offer_choice* (data-model.md).
+        """
         self.progress_file = progress_file
+        self.vocab_dir = vocab_dir
         self.warnings: list[str] = []
         self.current_index = 0
         self.pending_attempt: dict | None = None
@@ -32,15 +48,48 @@ class PracticeSession:
 
         items, warnings = load_vocabulary(vocab_dir)
         self.warnings = warnings
-        if group is not None:
-            items = [item for item in items if item.group == group]
-        self.items = items
+        self.all_items = items
 
-        self.step: Step = "recall" if self.items else "empty"
+        interactive = offer_choice and group is None
+        self.group_locked = not interactive
+
+        if interactive:
+            self.items = []
+            self.step: Step = "choose" if self.all_items else "empty"
+        else:
+            if group is not None:
+                items = [item for item in items if item.group == group]
+            self.items = items
+            self.step = "recall" if self.items else "empty"
 
     @property
     def current_item(self):
         return self.items[self.current_index]
+
+    def _available_collections(self) -> list[dict]:
+        """List of {"key", "label", "count"} choices derived from
+        self.all_items, per data-model.md: "practice everything" (key
+        None) always first, then real group values alphabetically, then
+        an "ungrouped" bucket (key UNGROUPED_KEY) last, only if any item
+        has group is None."""
+        named: dict[str, int] = {}
+        ungrouped_count = 0
+        for item in self.all_items:
+            if item.group is None:
+                ungrouped_count += 1
+            else:
+                named[item.group] = named.get(item.group, 0) + 1
+
+        collections = [
+            {"key": None, "label": "Practice everything", "count": len(self.all_items)}
+        ]
+        for key in sorted(named):
+            collections.append({"key": key, "label": key, "count": named[key]})
+        if ungrouped_count:
+            collections.append(
+                {"key": UNGROUPED_KEY, "label": "Ungrouped words", "count": ungrouped_count}
+            )
+        return collections
 
     def submit_answer(self, answer: str) -> dict:
         if self.step != "recall":
@@ -107,6 +156,27 @@ class PracticeSession:
             "explanation": result.explanation,
         }
 
+    def select_collection(self, key: str | None) -> None:
+        """Scope the session to one collection (spec 007): key is None for
+        "practice everything", UNGROUPED_KEY for untagged items, or a real
+        group value. Valid only from "choose"; resets progress counters
+        for the new pass, preserving self.all_items's order."""
+        if self.step != "choose":
+            raise WrongStepError("not choosing a collection")
+
+        if key is None:
+            self.items = list(self.all_items)
+        elif key == UNGROUPED_KEY:
+            self.items = [item for item in self.all_items if item.group is None]
+        else:
+            self.items = [item for item in self.all_items if item.group == key]
+
+        self.current_index = 0
+        self.pending_attempt = None
+        self.last_correction = None
+        self.correct_count = 0
+        self.step = "recall" if self.items else "empty"
+
     def skip_sentence(self) -> None:
         """Skip the sentence-writing step for the current item without a
         correction request, recording the recall outcome as-is (spec 006).
@@ -126,6 +196,19 @@ class PracticeSession:
         self.current_index += 1
         self.step = "complete" if self.current_index >= len(self.items) else "recall"
 
+    def restart(self) -> None:
+        """Return to the collection-choice screen (spec 007), reloading
+        vocabulary from disk so files added/removed/edited since this
+        session started are picked up. Valid only from "complete", and
+        only when a collection wasn't locked in at startup."""
+        if self.step != "complete" or self.group_locked:
+            raise WrongStepError("not ready to restart")
+
+        items, warnings = load_vocabulary(self.vocab_dir)
+        self.warnings = warnings
+        self.all_items = items
+        self.step = "choose" if self.all_items else "empty"
+
     def continue_to_next(self) -> None:
         if self.step == "complete":
             return
@@ -142,9 +225,13 @@ class PracticeSession:
 
     def state(self) -> dict:
         base = {"step": self.step, "warnings": self.warnings}
+        if self.step == "choose":
+            base["collections"] = self._available_collections()
+            return base
         if self.step == "complete":
             base["total"] = len(self.items)
             base["correct"] = self.correct_count
+            base["can_restart"] = not self.group_locked
             return base
         if self.step == "empty":
             return base

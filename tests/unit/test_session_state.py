@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from src.web.session_state import PracticeSession, WrongStepError
+from src.web.session_state import UNGROUPED_KEY, PracticeSession, WrongStepError
 
 
 def _write_vocab(tmp_path: Path) -> Path:
@@ -10,6 +10,17 @@ def _write_vocab(tmp_path: Path) -> Path:
     vocab_dir.mkdir()
     (vocab_dir / "unit1.md").write_text(
         "---\nenglish: receive\nchinese: 收到\n---\n\n---\nenglish: give up\nchinese: 放弃\n---\n"
+    )
+    return vocab_dir
+
+
+def _write_multi_group_vocab(tmp_path: Path) -> Path:
+    vocab_dir = tmp_path / "vocab"
+    vocab_dir.mkdir()
+    (vocab_dir / "words.md").write_text(
+        "---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n\n"
+        "---\nenglish: tailor\nchinese: 裁缝\ngroup: t-words\n---\n\n"
+        "---\nenglish: mystery\nchinese: 谜\n---\n"
     )
     return vocab_dir
 
@@ -196,6 +207,198 @@ def test_skip_sentence_writes_practice_attempt_without_sentence_or_feedback(tmp_
     assert "correct: true" in progress_text
     assert "sentence:" not in progress_text
     assert "feedback:" not in progress_text
+
+
+def test_default_behavior_unchanged_when_offer_choice_omitted(tmp_path: Path):
+    """Every existing caller that doesn't know about the collection-choice
+    feature (offer_choice omitted) must keep exactly today's behavior,
+    regardless of whether group is also given."""
+    vocab_dir = _write_vocab(tmp_path)
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md")
+    assert session.step == "recall"
+    assert session.group_locked is True
+
+
+def test_offer_choice_starts_in_choose_step_when_group_not_given(tmp_path: Path):
+    vocab_dir = _write_multi_group_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    assert session.step == "choose"
+    assert session.group_locked is False
+    assert len(session.all_items) == 3
+    assert session.items == []
+
+
+def test_offer_choice_with_empty_pool_still_starts_empty(tmp_path: Path):
+    vocab_dir = tmp_path / "empty_vocab"
+    vocab_dir.mkdir()
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    assert session.step == "empty"
+    assert session.group_locked is False
+
+
+def test_offer_choice_ignored_when_group_is_given(tmp_path: Path):
+    """A pre-selected group at startup always wins: no "choose" step, even
+    if offer_choice=True is also passed (group_locked stays True)."""
+    vocab_dir = _write_multi_group_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir,
+        progress_file=tmp_path / "progress.md",
+        group="unit1",
+        offer_choice=True,
+    )
+    assert session.step == "recall"
+    assert session.group_locked is True
+    assert len(session.items) == 1
+
+
+def test_available_collections_ordering_and_counts(tmp_path: Path):
+    vocab_dir = _write_multi_group_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    assert session._available_collections() == [
+        {"key": None, "label": "Practice everything", "count": 3},
+        {"key": "t-words", "label": "t-words", "count": 1},
+        {"key": "unit1", "label": "unit1", "count": 1},
+        {"key": "__ungrouped__", "label": "Ungrouped words", "count": 1},
+    ]
+
+
+def test_available_collections_omits_ungrouped_entry_when_none_exist(tmp_path: Path):
+    vocab_dir = tmp_path / "vocab"
+    vocab_dir.mkdir()
+    (vocab_dir / "words.md").write_text("---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n")
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    assert session._available_collections() == [
+        {"key": None, "label": "Practice everything", "count": 1},
+        {"key": "unit1", "label": "unit1", "count": 1},
+    ]
+
+
+def test_state_choose_step_includes_collections(tmp_path: Path):
+    vocab_dir = _write_multi_group_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    state = session.state()
+    assert state["step"] == "choose"
+    assert state["collections"][0] == {"key": None, "label": "Practice everything", "count": 3}
+    assert state["warnings"] == []
+
+
+def test_select_collection_rejected_when_not_in_choose_step(tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md")
+    assert session.step == "recall"  # offer_choice not passed, never "choose"
+    with pytest.raises(WrongStepError):
+        session.select_collection(None)
+
+
+def test_select_collection_named_group_filters_and_resets_progress(tmp_path: Path):
+    vocab_dir = _write_multi_group_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    session.select_collection("unit1")
+    assert session.step == "recall"
+    assert [i.english for i in session.items] == ["receive"]
+    assert session.current_index == 0
+    assert session.pending_attempt is None
+    assert session.correct_count == 0
+
+
+def test_select_collection_none_means_practice_everything(tmp_path: Path):
+    vocab_dir = _write_multi_group_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    session.select_collection(None)
+    assert session.step == "recall"
+    assert len(session.items) == 3
+
+
+def test_select_collection_ungrouped_key_selects_untagged_items(tmp_path: Path):
+    vocab_dir = _write_multi_group_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    session.select_collection(UNGROUPED_KEY)
+    assert session.step == "recall"
+    assert [i.english for i in session.items] == ["mystery"]
+
+
+def test_select_collection_preserves_original_item_order(tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)  # "receive" then "give up", both ungrouped
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    session.select_collection(UNGROUPED_KEY)
+    assert [i.english for i in session.items] == ["receive", "give up"]
+
+
+def test_restart_rejected_when_not_complete(tmp_path: Path):
+    vocab_dir = _write_multi_group_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    with pytest.raises(WrongStepError):
+        session.restart()  # still "choose"
+
+
+def test_restart_rejected_when_group_locked(tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md")
+    session.submit_answer("receive")
+    session.submit_sentence("I received a gift.", base_url="x", model="m", correction_fn=lambda *a, **k: _stub())
+    session.continue_to_next()
+    session.submit_answer("give up")
+    session.submit_sentence("I gave up.", base_url="x", model="m", correction_fn=lambda *a, **k: _stub())
+    session.continue_to_next()
+    assert session.step == "complete"
+    assert session.group_locked is True
+    with pytest.raises(WrongStepError):
+        session.restart()
+
+
+def test_restart_reloads_vocabulary_and_returns_to_choose(tmp_path: Path):
+    vocab_dir = _write_multi_group_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    session.select_collection(UNGROUPED_KEY)
+    session.submit_answer("mystery")
+    session.skip_sentence()
+    assert session.step == "complete"
+
+    (vocab_dir / "more.md").write_text("---\nenglish: tablet\nchinese: 平板\ngroup: unit1\n---\n")
+    session.restart()
+
+    assert session.step == "choose"
+    assert len(session.all_items) == 4
+    assert any(item.english == "tablet" for item in session.all_items)
+
+
+def test_restart_with_nothing_left_goes_to_empty(tmp_path: Path):
+    vocab_dir = tmp_path / "vocab"
+    vocab_dir.mkdir()
+    (vocab_dir / "one.md").write_text("---\nenglish: receive\nchinese: 收到\n---\n")
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    session.select_collection(None)
+    session.submit_answer("receive")
+    session.skip_sentence()
+    assert session.step == "complete"
+
+    (vocab_dir / "one.md").unlink()
+    session.restart()
+    assert session.step == "empty"
 
 
 def test_concurrent_sentence_submission_is_rejected(tmp_path: Path):

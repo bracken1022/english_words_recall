@@ -35,6 +35,7 @@ def main() -> None:
         group=args.group,
         ollama_url=args.ollama_url,
         model=args.model,
+        offer_choice=args.group is None,
     )
     print(f"English Tutor web UI running at http://{args.host}:{args.port} (Ctrl+C to stop)")
     app.run(host=args.host, port=args.port)
