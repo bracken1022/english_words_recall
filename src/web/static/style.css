@@ -8,6 +8,8 @@
   --ink-rgb: 27, 42, 74;
   --red: #a8281f;
   --red-tint: #f5e4e1;
+  --green: #2f6d3a;
+  --green-tint: #e3efe4;
   --rule: #c7cdcb;
 
   --font-serif: "Songti SC", "STSong", "Noto Serif SC", Georgia, "Times New Roman", serif;
@@ -21,6 +23,8 @@
     --ink-rgb: 231, 227, 214;
     --red: #e5573e;
     --red-tint: #3a241f;
+    --green: #5fbd6e;
+    --green-tint: #1f3324;
     --rule: #333e48;
   }
 }
@@ -250,9 +254,10 @@ button:focus-visible {
   min-width: 0;
 }
 
-/* The grading mark: one red ink stamp, distinguished by symbol (✓ / ✗)
-   rather than by color — the actual convention of a teacher's red pen,
-   and incidentally more accessible than a red/green pairing. */
+/* The grading mark: a stamp shape shared by both outcomes, distinguished
+   by symbol (✓ / ✗) as well as by color (spec 008's green vs. this rule's
+   base red) — the symbol/wording distinction is kept regardless of color,
+   so the result stays legible even without color vision. */
 #word-feedback {
   align-self: flex-start;
   width: fit-content;
@@ -268,6 +273,12 @@ button:focus-visible {
   padding: 8px 14px;
   margin: 0;
   transform: rotate(-2deg);
+}
+
+#word-feedback.feedback-correct {
+  color: var(--green);
+  background: var(--green-tint);
+  border-color: var(--green);
 }
 
 #word-feedback::before {

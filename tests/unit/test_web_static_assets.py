@@ -43,6 +43,24 @@ def test_app_js_uses_the_requested_feedback_wording():
     assert "Incorrect. The correct expression is:" in js
 
 
+def test_feedback_correct_uses_green_not_red():
+    """Spec 008: a correct recall result must render in a distinct green,
+    while an incorrect one keeps today's red (no new .feedback-incorrect
+    color override should be needed at all)."""
+    css = CSS_PATH.read_text(encoding="utf-8")
+
+    match = re.search(r"\.feedback-correct\s*{([^}]*)}", css)
+    assert match is not None, "style.css must define a plain .feedback-correct color rule"
+    rule_body = match.group(1)
+    assert "--green" in rule_body
+    assert "--red" not in rule_body
+
+    assert re.search(r"\.feedback-incorrect\s*{([^}]*)}", css) is None, (
+        ".feedback-incorrect should need no color override — it already inherits "
+        "#word-feedback's base red"
+    )
+
+
 def test_style_defines_field_row_layout():
     css = CSS_PATH.read_text(encoding="utf-8")
     assert ".field-row" in css
