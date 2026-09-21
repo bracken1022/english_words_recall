@@ -1,8 +1,9 @@
 # English Tutor
 
-A local, single-learner CLI tool that drills English vocabulary for Chinese
-speakers: it shows a Chinese meaning, has you recall the English expression,
-has you write an original sentence with it, and sends that sentence to a
+A local, single-learner CLI and web tool that drills English vocabulary for
+Chinese speakers: it shows a Chinese meaning, has you recall the English
+expression, has you write an original sentence with it (typed, or — in the
+web UI — spoken and transcribed locally), and sends that sentence to a
 locally running [Ollama](https://ollama.com) model (default `qwen3:14b`) for
 grammar/naturalness correction via Ollama's HTTP API — the app never spawns
 the `ollama` CLI. All vocabulary content and practice history are plain
@@ -103,10 +104,52 @@ Linux). It accepts the same `--vocab-dir`, `--progress-file`, `--group`,
 `--ollama-url`, and `--model` flags as the CLI, plus `--host` and `--port`
 to change what it binds to.
 
+If you don't pass `--group`, opening the web UI first shows a screen
+listing the collections found in your vocabulary folder (grouped by each
+item's `group` tag, plus "Practice everything" and, if any items have no
+tag, "Ungrouped words") — pick one to limit the session to just those
+words. Finishing a session shows how many you recalled correctly and
+offers a "Practice again" button that returns to that same screen
+(re-reading the vocabulary folder, so files you've added or changed in the
+meantime show up), all without restarting the server. Passing `--group`
+skips this screen entirely and behaves as before: it goes straight into
+practicing just that group, with no way to switch collections without
+restarting.
+
+While writing a sentence, submitting it empty asks you to confirm skipping
+that word rather than sending nothing off for review.
+
 The web UI and the command-line tool can be run at the same time and are
 just two ways to reach the same tutor — running one doesn't require
 stopping the other (though see the caution above about keeping
-`--progress-file` outside `--vocab-dir` for either).
+`--progress-file` outside `--vocab-dir` for either). The collection screen,
+skip confirmation, and voice input below are conveniences specific to the
+web UI; the command-line tool intentionally keeps its original, simpler
+one-word-at-a-time flow.
+
+### Voice input (optional)
+
+Instead of typing a sentence, you can speak it. This is entirely
+local — no cloud speech service is ever used, and no audio is kept once
+it's transcribed:
+
+```bash
+.venv/bin/pip install -e ".[voice]"
+```
+
+The first time you use it, a small local speech-to-text model
+(`faster-whisper`) is downloaded and cached — a one-time setup step, the
+same idea as pulling an Ollama model. Once installed, a "Speak instead"
+button appears next to the sentence field; tap it to start recording, tap
+it again to stop. The recognized text lands in that same field for you to
+review and edit — nothing is ever submitted straight from speech. If the
+dependency isn't installed (or fails to load), the button simply doesn't
+appear and typing works exactly as it always has.
+
+> **Note**: browsers only allow microphone access on `localhost` or over
+> HTTPS. If you're reaching the web UI from another device on your LAN
+> (see above), voice input generally won't be available there — typing is
+> unaffected either way.
 
 ## Development
 
@@ -115,6 +158,5 @@ stopping the other (though see the caution above about keeping
 .venv/bin/ruff check .   # lint
 ```
 
-See `specs/001-vocab-recall-tutor/`, `specs/002-sentence-review-indicator/`,
-and `specs/003-web-ui/` for the full specs, plans, and design artifacts this
-project was built from.
+See `specs/` (one directory per feature, each with its own spec, plan, and
+design artifacts) for the full history this project was built from.
