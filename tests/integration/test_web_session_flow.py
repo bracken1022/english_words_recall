@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.services.llm_client import CorrectionResult
+from src.services.speech_client import TranscriptionResult
 from src.web.app import create_app
 
 
@@ -163,6 +164,44 @@ def test_group_locked_web_ui_never_shows_choose(tmp_path: Path):
     assert client.get("/api/state").get_json()["step"] == "recall"
     assert client.post("/api/select", json={"collection": None}).status_code == 409
     assert client.post("/api/restart").status_code == 409
+
+
+@patch("src.web.app.transcribe")
+@patch("src.web.session_state.request_correction")
+def test_full_record_transcribe_review_submit_flow(mock_request, mock_transcribe, tmp_path: Path):
+    """Spec 009: transcribed text is submitted through the exact same
+    POST /api/sentence path as typed text, indistinguishable in the
+    progress log."""
+    mock_request.return_value = CorrectionResult(
+        available=True, uses_expression=True, needs_correction=False, corrected=None, explanation=None
+    )
+    mock_transcribe.return_value = TranscriptionResult(
+        available=True, text="I received a gift yesterday."
+    )
+    progress_file = tmp_path / "progress.md"
+    vocab_dir = tmp_path / "vocab"
+    vocab_dir.mkdir()
+    (vocab_dir / "unit1.md").write_text("---\nenglish: receive\nchinese: 收到\n---\n")
+    app = create_app(vocab_dir=vocab_dir, progress_file=progress_file, group=None,
+                      ollama_url="http://localhost:11434", model="qwen3:14b")
+    client = app.test_client()
+
+    client.post("/api/answer", json={"answer": "receive"})
+
+    transcribe_resp = client.post("/api/transcribe", data=b"fake audio", content_type="audio/webm")
+    assert transcribe_resp.status_code == 200
+    recognized_text = transcribe_resp.get_json()["text"]
+    assert recognized_text == "I received a gift yesterday."
+
+    # The learner reviews the recognized text, then submits it exactly as
+    # they would a typed sentence — same endpoint, no new code path.
+    client.post("/api/sentence", json={"sentence": recognized_text})
+
+    state = client.get("/api/state").get_json()
+    assert state["step"] == "feedback"
+
+    progress_text = progress_file.read_text(encoding="utf-8")
+    assert "sentence: I received a gift yesterday." in progress_text
 
 
 def test_default_host_is_lan_reachable(tmp_path: Path):

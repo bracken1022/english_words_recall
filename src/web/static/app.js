@@ -22,6 +22,8 @@
   const continueButton = document.getElementById("continue-button");
   const sessionTallyEl = document.getElementById("session-tally");
   const restartButton = document.getElementById("restart-button");
+  const micButton = document.getElementById("mic-button");
+  const transcribingEl = document.getElementById("transcribing");
 
   let lastAcceptedExpressions = [];
 
@@ -71,6 +73,7 @@
       targetExpressionEl.textContent = lastAcceptedExpressions[0] || "";
       sentenceInput.value = "";
       spinnerEl.hidden = true;
+      micButton.hidden = !state.voice_available;
     } else if (state.step === "feedback") {
       renderFeedback(state.feedback);
     } else if (state.step === "complete") {
@@ -186,6 +189,72 @@
   restartButton.addEventListener("click", async () => {
     const resp = await fetch("/api/restart", { method: "POST" });
     renderState(await resp.json());
+  });
+
+  // Voice input (spec 009): records a short clip and sends it to
+  // /api/transcribe, landing the recognized text in the same field a
+  // typed sentence uses — never auto-submitted (FR-002).
+  let mediaRecorder = null;
+  let audioChunks = [];
+
+  micButton.addEventListener("click", async () => {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      mediaRecorder.stop();
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      micButton.hidden = true;
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const preferredTypes = [
+        "audio/webm;codecs=opus",
+        "audio/webm",
+        "audio/ogg;codecs=opus",
+        "audio/mp4",
+      ];
+      const mimeType = preferredTypes.find((type) => MediaRecorder.isTypeSupported(type));
+      mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      audioChunks = [];
+
+      mediaRecorder.addEventListener("dataavailable", (event) => {
+        if (event.data.size > 0) {
+          audioChunks.push(event.data);
+        }
+      });
+
+      mediaRecorder.addEventListener("stop", async () => {
+        stream.getTracks().forEach((track) => track.stop());
+        micButton.textContent = "Speak instead";
+        micButton.classList.remove("recording");
+        const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+        transcribingEl.hidden = false;
+        try {
+          const resp = await fetch("/api/transcribe", {
+            method: "POST",
+            headers: { "Content-Type": blob.type },
+            body: blob,
+          });
+          const data = await resp.json();
+          if (data.available) {
+            sentenceInput.value = data.text;
+          }
+        } finally {
+          transcribingEl.hidden = true;
+        }
+      });
+
+      mediaRecorder.start();
+      micButton.textContent = "Stop";
+      micButton.classList.add("recording");
+    } catch {
+      // Microphone permission denied, no device, or an insecure context —
+      // fall back to typing only (FR-004).
+      micButton.hidden = true;
+    }
   });
 
   fetchState();

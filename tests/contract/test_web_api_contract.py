@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.services.llm_client import CorrectionResult
+from src.services.speech_client import TranscriptionResult
 from src.web.app import create_app
 
 
@@ -314,6 +315,60 @@ def test_post_restart_returns_to_choose(tmp_path: Path):
     data = resp.get_json()
     assert data["step"] == "choose"
     assert data["collections"][0]["key"] is None
+
+
+def test_get_state_reports_voice_available_true(tmp_path: Path):
+    with patch("src.web.app.is_available", return_value=True):
+        client = _make_client(tmp_path)
+    data = client.get("/api/state").get_json()
+    assert data["voice_available"] is True
+
+
+def test_get_state_reports_voice_available_false(tmp_path: Path):
+    with patch("src.web.app.is_available", return_value=False):
+        client = _make_client(tmp_path)
+    data = client.get("/api/state").get_json()
+    assert data["voice_available"] is False
+
+
+def test_voice_available_present_on_every_step_not_just_sentence(tmp_path: Path):
+    with patch("src.web.app.is_available", return_value=True):
+        client = _make_client(tmp_path, vocab_text=None)  # -> "empty" step
+    data = client.get("/api/state").get_json()
+    assert data["step"] == "empty"
+    assert data["voice_available"] is True
+
+
+@patch("src.web.app.transcribe")
+def test_post_transcribe_success(mock_transcribe, tmp_path: Path):
+    mock_transcribe.return_value = TranscriptionResult(available=True, text="I received a gift.")
+    client = _make_client(tmp_path)
+    resp = client.post("/api/transcribe", data=b"fake audio", content_type="audio/webm")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["available"] is True
+    assert data["text"] == "I received a gift."
+
+
+@patch("src.web.app.transcribe")
+def test_post_transcribe_unavailable_is_still_200(mock_transcribe, tmp_path: Path):
+    mock_transcribe.return_value = TranscriptionResult(available=False, text=None)
+    client = _make_client(tmp_path)
+    resp = client.post("/api/transcribe", data=b"fake audio", content_type="audio/webm")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["available"] is False
+    assert data["text"] is None
+
+
+@patch("src.web.app.transcribe")
+def test_post_transcribe_accepted_regardless_of_practice_step(mock_transcribe, tmp_path: Path):
+    """No 409 exists for this endpoint — it has no relationship to
+    recall/sentence/feedback progression (research.md §3)."""
+    mock_transcribe.return_value = TranscriptionResult(available=True, text="hello")
+    client = _make_client(tmp_path)  # starts in "recall", not "sentence"
+    resp = client.post("/api/transcribe", data=b"fake audio", content_type="audio/webm")
+    assert resp.status_code == 200
 
 
 def test_post_skip_rejected_when_not_awaiting_sentence(tmp_path: Path):

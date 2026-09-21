@@ -254,6 +254,27 @@ button:focus-visible {
   min-width: 0;
 }
 
+/* A quiet, secondary alternative to typing — outlined rather than the
+   solid ink block used for primary actions (Check/Review/Continue), so
+   it doesn't compete with them. Turns red-outlined while recording,
+   the same accent already used for marking/attention elsewhere. */
+.mic-button {
+  align-self: flex-start;
+  margin-top: 8px;
+  background: transparent;
+  color: rgb(var(--ink-rgb));
+  border: 1px solid rgb(var(--ink-rgb));
+}
+
+.mic-button:active {
+  background: transparent;
+}
+
+.mic-button.recording {
+  color: var(--red);
+  border-color: var(--red);
+}
+
 /* The grading mark: a stamp shape shared by both outcomes, distinguished
    by symbol (✓ / ✗) as well as by color (spec 008's green vs. this rule's
    base red) — the symbol/wording distinction is kept regardless of color,

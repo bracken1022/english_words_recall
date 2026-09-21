@@ -112,6 +112,17 @@ def test_app_js_renders_choose_view_from_state_collections():
     assert "choose-view" in js
 
 
+def test_app_js_wires_up_voice_input():
+    """Spec 009: recording is captured via MediaRecorder and uploaded to
+    /api/transcribe; the mic control's visibility follows state.voice_available
+    rather than always being shown."""
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert "MediaRecorder" in js
+    assert "getUserMedia" in js
+    assert "/api/transcribe" in js
+    assert "voice_available" in js
+
+
 def test_spinner_uses_hidden_attribute_not_a_separate_mechanism():
     """Regression guard (spec 005, User Story 2): confirms the spinner is
     actually covered by the [hidden] override above, rather than using

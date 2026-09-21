@@ -6,6 +6,7 @@ from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request
 
+from src.services.speech_client import is_available, transcribe
 from src.web.session_state import PracticeSession, WrongStepError
 
 
@@ -23,6 +24,7 @@ def create_app(
     )
     app.config["OLLAMA_URL"] = ollama_url
     app.config["MODEL"] = model
+    app.config["VOICE_AVAILABLE"] = is_available()
     app.practice_session = session
 
     @app.get("/")
@@ -31,7 +33,12 @@ def create_app(
 
     @app.get("/api/state")
     def get_state():
-        return jsonify(session.state())
+        return jsonify({**session.state(), "voice_available": app.config["VOICE_AVAILABLE"]})
+
+    @app.post("/api/transcribe")
+    def post_transcribe():
+        result = transcribe(request.get_data(), content_type=request.content_type or "")
+        return jsonify({"available": result.available, "text": result.text})
 
     @app.post("/api/answer")
     def post_answer():
