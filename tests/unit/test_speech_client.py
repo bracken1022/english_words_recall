@@ -2,9 +2,13 @@
 
 The actual model call is always mocked (patching `_get_model`) — this
 project never loads a real Whisper model in the test suite (research.md
-§6), and `faster-whisper` is an optional dependency that may not even be
-installed in the environment running these tests."""
+§6). `faster-whisper` is an optional dependency (spec 009 FR-007): the
+"package not installed" tests must hold regardless of whether it actually
+happens to be installed in whatever environment runs this suite, so they
+force the import to fail via sys.modules rather than relying on ambient
+state."""
 
+import sys
 from unittest.mock import MagicMock, patch
 
 from src.services.speech_client import TranscriptionResult, is_available, transcribe
@@ -25,10 +29,12 @@ def test_transcription_result_shape():
 
 
 def test_is_available_false_when_package_not_installed():
-    """faster-whisper is not installed in this dev/test environment
-    (it's an optional extra, per pyproject.toml's `voice` group) — this
-    exercises the real, unmocked import-failure path."""
-    assert is_available() is False
+    """faster-whisper is an optional extra (pyproject.toml's `voice`
+    group) — force the import to fail regardless of whether it's actually
+    installed in this environment, so this test doesn't depend on ambient
+    dev-machine state."""
+    with patch.dict(sys.modules, {"faster_whisper": None}):
+        assert is_available() is False
 
 
 @patch("src.services.speech_client._get_model")
@@ -64,8 +70,12 @@ def test_transcribe_unavailable_when_audio_empty():
 
 
 def test_transcribe_unavailable_when_package_not_installed():
-    """Same real, unmocked import-failure path as is_available() above,
-    exercised through transcribe() this time."""
-    result = transcribe(b"fake audio bytes", content_type="audio/webm")
+    """Same forced import failure as is_available() above, exercised
+    through transcribe() this time — independent of ambient dev-machine
+    state (depends on the process-wide _model cache still being unset,
+    true as long as no earlier test in this file populated it for real,
+    which none do — every other test here mocks _get_model directly)."""
+    with patch.dict(sys.modules, {"faster_whisper": None}):
+        result = transcribe(b"fake audio bytes", content_type="audio/webm")
     assert result.available is False
     assert result.text is None
