@@ -18,6 +18,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ollama-url", default="http://localhost:11434")
     parser.add_argument("--model", default=DEFAULT_MODEL)
     parser.add_argument(
+        "--order",
+        choices=["sequential", "random"],
+        default="sequential",
+        help=(
+            "Order to present words in (default: sequential). Only takes effect "
+            "when --group is also given; otherwise the interactive choose screen "
+            "governs order."
+        ),
+    )
+    parser.add_argument(
         "--host",
         default="0.0.0.0",
         help="Bind address (default: 0.0.0.0, reachable from other devices on the local network)",
@@ -36,6 +46,7 @@ def main() -> None:
         ollama_url=args.ollama_url,
         model=args.model,
         offer_choice=args.group is None,
+        order=args.order,
     )
     print(f"English Tutor web UI running at http://{args.host}:{args.port} (Ctrl+C to stop)")
     app.run(host=args.host, port=args.port)

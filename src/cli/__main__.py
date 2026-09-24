@@ -39,6 +39,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default=DEFAULT_MODEL,
         help=f"Name of the local Ollama model to use for sentence correction (default: {DEFAULT_MODEL})",
     )
+    parser.add_argument(
+        "--order",
+        choices=["sequential", "random"],
+        default="sequential",
+        help="Order to present words in (default: sequential)",
+    )
     return parser
 
 
@@ -51,6 +57,7 @@ def main() -> None:
         group=args.group,
         ollama_url=args.ollama_url,
         model=args.model,
+        order=args.order,
     )
 
 

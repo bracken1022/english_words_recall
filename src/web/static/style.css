@@ -200,6 +200,43 @@ button:focus-visible {
   outline-offset: 2px;
 }
 
+/* The order choice, sitting above the collection list: a plain inline
+   radio pair, quieter than the list below it since it's a secondary
+   setting, not the primary action on this screen. */
+.order-toggle {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px;
+  border: none;
+  margin: 0;
+  padding: 0;
+}
+
+.order-toggle legend {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: rgba(var(--ink-rgb), 0.75);
+  padding: 0;
+  margin-right: 4px;
+}
+
+.order-toggle label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.95rem;
+  font-weight: 400;
+  color: rgb(var(--ink-rgb));
+  margin-bottom: 0;
+  cursor: pointer;
+}
+
+.order-toggle input[type="radio"] {
+  accent-color: var(--red);
+}
+
 /* The collection-choice list: quieter than the solid ink buttons used
    elsewhere (a repeated wall of them would fight the "one bold accent"
    principle) — each entry reads as a ruled line item instead. */

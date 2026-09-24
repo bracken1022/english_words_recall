@@ -3,6 +3,7 @@ data-model.md). A thin orchestration layer over the existing, unchanged
 services — vocabulary_loader, matcher, llm_client.request_correction,
 progress_log — introducing no new grading/review/persistence logic."""
 
+import random
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -29,6 +30,7 @@ class PracticeSession:
         progress_file: Path,
         group: str | None = None,
         offer_choice: bool = False,
+        order: str = "sequential",
     ):
         """*offer_choice* opts into the interactive collection-choice step
         (spec 007); it defaults to False so every existing caller that
@@ -36,6 +38,10 @@ class PracticeSession:
         (group=None -> immediate, unfiltered "recall"). Only
         src/web/__main__.py sets it, and only when no --group was given —
         an explicit *group* always wins over *offer_choice* (data-model.md).
+
+        *order* ("sequential" [default] or "random", spec 011) is only
+        consumed here in the locked branch below — when *offer_choice* wins
+        instead, select_collection()'s own *order* argument governs it.
         """
         self.progress_file = progress_file
         self.vocab_dir = vocab_dir
@@ -59,6 +65,8 @@ class PracticeSession:
         else:
             if group is not None:
                 items = [item for item in items if item.group == group]
+            if order == "random":
+                random.shuffle(items)
             self.items = items
             self.step = "recall" if self.items else "empty"
 
@@ -156,11 +164,12 @@ class PracticeSession:
             "explanation": result.explanation,
         }
 
-    def select_collection(self, key: str | None) -> None:
+    def select_collection(self, key: str | None, order: str = "sequential") -> None:
         """Scope the session to one collection (spec 007): key is None for
         "practice everything", UNGROUPED_KEY for untagged items, or a real
         group value. Valid only from "choose"; resets progress counters
-        for the new pass, preserving self.all_items's order."""
+        for the new pass, preserving self.all_items's order unless *order*
+        is "random" (spec 011), in which case it's shuffled once here."""
         if self.step != "choose":
             raise WrongStepError("not choosing a collection")
 
@@ -170,6 +179,9 @@ class PracticeSession:
             self.items = [item for item in self.all_items if item.group is None]
         else:
             self.items = [item for item in self.all_items if item.group == key]
+
+        if order == "random":
+            random.shuffle(self.items)
 
         self.current_index = 0
         self.pending_attempt = None

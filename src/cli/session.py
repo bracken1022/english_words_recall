@@ -1,5 +1,6 @@
 """The interactive recall -> sentence -> correction session loop."""
 
+import random
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -105,16 +106,21 @@ def run_session(
     group: str | None = None,
     ollama_url: str = "http://localhost:11434",
     model: str = DEFAULT_MODEL,
+    order: str = "sequential",
 ) -> None:
     """Run a full practice session: load items, filter, then walk forward
     through the recall step for each one, one at a time, no skip/back
-    (FR-015, FR-016)."""
+    (FR-015, FR-016). *order* ("sequential" [default] or "random", spec
+    011) shuffles the filtered pool once, before the walk begins."""
     items, warnings = load_vocabulary(vocab_dir)
     for warning in warnings:
         console.print(f"[yellow]Warning:[/yellow] {warning}")
 
     if group is not None:
         items = [item for item in items if item.group == group]
+
+    if order == "random":
+        random.shuffle(items)
 
     if not items:
         console.print("No vocabulary items available for this session.")

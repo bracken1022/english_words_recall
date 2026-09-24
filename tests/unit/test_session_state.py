@@ -1,4 +1,5 @@
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -422,3 +423,74 @@ def test_concurrent_sentence_submission_is_rejected(tmp_path: Path):
 
     assert "error" in inner_raised
     assert session.step == "feedback"  # the original (outer) call still completed normally
+
+
+@patch("src.web.session_state.random.shuffle")
+def test_init_locked_mode_random_order_shuffles_once(mock_shuffle, tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", order="random"
+    )
+    mock_shuffle.assert_called_once_with(session.items)
+
+
+@patch("src.web.session_state.random.shuffle")
+def test_init_locked_mode_sequential_order_never_shuffles(mock_shuffle, tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)
+    PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", order="sequential")
+    mock_shuffle.assert_not_called()
+
+
+@patch("src.web.session_state.random.shuffle")
+def test_init_locked_mode_default_order_never_shuffles(mock_shuffle, tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)
+    PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md")
+    mock_shuffle.assert_not_called()
+
+
+def test_init_random_order_is_a_permutation_of_the_same_items(tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", order="random"
+    )
+    assert sorted(i.english for i in session.items) == ["give up", "receive"]
+
+
+@patch("src.web.session_state.random.shuffle")
+def test_select_collection_random_order_shuffles_once(mock_shuffle, tmp_path: Path):
+    vocab_dir = _write_multi_group_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    session.select_collection(None, order="random")
+    mock_shuffle.assert_called_once_with(session.items)
+
+
+@patch("src.web.session_state.random.shuffle")
+def test_select_collection_sequential_order_never_shuffles(mock_shuffle, tmp_path: Path):
+    vocab_dir = _write_multi_group_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    session.select_collection(None, order="sequential")
+    mock_shuffle.assert_not_called()
+
+
+@patch("src.web.session_state.random.shuffle")
+def test_select_collection_default_order_never_shuffles(mock_shuffle, tmp_path: Path):
+    vocab_dir = _write_multi_group_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    session.select_collection(None)
+    mock_shuffle.assert_not_called()
+
+
+def test_select_collection_random_order_is_a_permutation_of_the_same_items(tmp_path: Path):
+    vocab_dir = _write_multi_group_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    session.select_collection(None, order="random")
+    assert sorted(i.english for i in session.items) == ["mystery", "receive", "tailor"]
+

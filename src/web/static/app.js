@@ -84,6 +84,11 @@
     }
   }
 
+  function getSelectedOrder() {
+    const checked = document.querySelector('input[name="order-choice"]:checked');
+    return checked ? checked.value : "sequential";
+  }
+
   function renderChoose(collections) {
     chooseListEl.innerHTML = "";
     for (const entry of collections) {
@@ -94,7 +99,7 @@
         await fetch("/api/select", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ collection: entry.key }),
+          body: JSON.stringify({ collection: entry.key, order: getSelectedOrder() }),
         });
         await fetchState();
       });

@@ -430,3 +430,53 @@ def test_post_sentence_rejects_second_request_while_one_in_progress(mock_request
     assert inner_response["resp"].status_code == 409
     assert "error" in inner_response["resp"].get_json()
     assert outer_resp.status_code == 200  # the original request still completed normally
+
+
+@patch("src.web.session_state.random.shuffle")
+def test_post_select_random_order_shuffles_once(mock_shuffle, tmp_path: Path):
+    client = _make_client(
+        tmp_path,
+        vocab_text=(
+            "---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n\n"
+            "---\nenglish: tailor\nchinese: 裁缝\ngroup: unit1\n---\n"
+        ),
+        offer_choice=True,
+    )
+    resp = client.post("/api/select", json={"collection": "unit1", "order": "random"})
+    assert resp.status_code == 200
+    mock_shuffle.assert_called_once()
+
+
+@patch("src.web.session_state.random.shuffle")
+def test_post_select_order_absent_defaults_to_sequential(mock_shuffle, tmp_path: Path):
+    client = _make_client(
+        tmp_path,
+        vocab_text="---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n",
+        offer_choice=True,
+    )
+    resp = client.post("/api/select", json={"collection": "unit1"})
+    assert resp.status_code == 200
+    mock_shuffle.assert_not_called()
+
+
+@patch("src.web.session_state.random.shuffle")
+def test_post_select_invalid_order_defaults_to_sequential(mock_shuffle, tmp_path: Path):
+    client = _make_client(
+        tmp_path,
+        vocab_text="---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n",
+        offer_choice=True,
+    )
+    resp = client.post("/api/select", json={"collection": "unit1", "order": "not-a-real-value"})
+    assert resp.status_code == 200
+    mock_shuffle.assert_not_called()
+
+
+def test_post_select_missing_collection_is_400_regardless_of_order(tmp_path: Path):
+    client = _make_client(
+        tmp_path,
+        vocab_text="---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n",
+        offer_choice=True,
+    )
+    resp = client.post("/api/select", json={"order": "random"})
+    assert resp.status_code == 400
+    assert resp.get_json()["error"] == "missing 'collection'"

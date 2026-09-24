@@ -123,6 +123,28 @@ def test_app_js_wires_up_voice_input():
     assert "voice_available" in js
 
 
+def test_app_js_tracks_order_and_sends_it_with_select():
+    """Spec 011: the choose screen's order toggle is submitted together
+    with the collection in one POST /api/select call, not a second step."""
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert "order-choice" in js
+    assert "getSelectedOrder" in js
+    select_call_start = js.index('await fetch("/api/select"')
+    select_call_end = js.index(");", select_call_start)
+    assert "order" in js[select_call_start:select_call_end]
+
+
+def test_choose_view_offers_an_order_toggle():
+    """Spec 011: the order choice lives on the existing collection-choice
+    screen (spec 007), not a separate one."""
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    choose_start, choose_end = _section_bounds(html, "choose-view")
+    choose_html = html[choose_start:choose_end]
+    assert 'name="order-choice"' in choose_html
+    assert 'value="sequential"' in choose_html
+    assert 'value="random"' in choose_html
+
+
 def test_spinner_uses_hidden_attribute_not_a_separate_mechanism():
     """Regression guard (spec 005, User Story 2): confirms the spinner is
     actually covered by the [hidden] override above, rather than using
