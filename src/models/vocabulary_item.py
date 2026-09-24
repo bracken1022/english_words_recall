@@ -15,10 +15,18 @@ class VocabularyItem:
     group: str | None = None
 
     def __post_init__(self) -> None:
+        if not isinstance(self.english, str):
+            raise VocabularyItemError("VocabularyItem requires 'english' to be a string")
         if not self.english:
             raise VocabularyItemError("VocabularyItem requires a non-empty 'english' field")
+        if not isinstance(self.chinese, str):
+            raise VocabularyItemError("VocabularyItem requires 'chinese' to be a string")
         if not self.chinese:
             raise VocabularyItemError("VocabularyItem requires a non-empty 'chinese' field")
+        if not all(isinstance(a, str) for a in self.alternates):
+            raise VocabularyItemError("VocabularyItem requires every 'alternates' entry to be a string")
+        if self.group is not None and not isinstance(self.group, str):
+            raise VocabularyItemError("VocabularyItem requires 'group' to be a string or absent")
 
     @classmethod
     def from_block(cls, block: dict) -> "VocabularyItem":

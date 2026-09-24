@@ -36,3 +36,32 @@ def test_from_block_builds_item_from_dict():
 def test_from_block_missing_required_field_raises():
     with pytest.raises(VocabularyItemError):
         VocabularyItem.from_block({"chinese": "收到"})
+
+
+def test_non_string_english_is_invalid():
+    """Defense in depth: a non-string field (e.g. a YAML parser resolving
+    an unquoted word like "on" to a boolean) must be rejected here too,
+    at load time, rather than crashing later mid-session when that word
+    is graded (src/services/matcher.py)."""
+    with pytest.raises(VocabularyItemError):
+        VocabularyItem(english=True, chinese="收到")
+
+
+def test_non_string_chinese_is_invalid():
+    with pytest.raises(VocabularyItemError):
+        VocabularyItem(english="on", chinese=True)
+
+
+def test_non_string_alternate_is_invalid():
+    with pytest.raises(VocabularyItemError):
+        VocabularyItem(english="on", chinese="在……上", alternates=["off", True])
+
+
+def test_non_string_group_is_invalid():
+    with pytest.raises(VocabularyItemError):
+        VocabularyItem(english="on", chinese="在……上", group=True)
+
+
+def test_from_block_with_non_string_alternate_raises():
+    with pytest.raises(VocabularyItemError):
+        VocabularyItem.from_block({"english": "on", "chinese": "在……上", "alternates": [True]})

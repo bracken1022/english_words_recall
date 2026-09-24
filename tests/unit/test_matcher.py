@@ -35,3 +35,14 @@ def test_empty_answer_is_incorrect():
 def test_unrelated_answer_is_incorrect():
     item = VocabularyItem(english="receive", chinese="收到")
     assert grade_answer(item, "give up") is False
+
+
+def test_alternate_that_looks_like_a_yaml_boolean_word_is_matched_as_text():
+    """Regression test for a reported crash: an alternate expression that
+    happens to be "on"/"off"/"yes"/"no" must still be a plain string by
+    the time it reaches grading (the fix lives in the YAML block parser,
+    src/lib/markdown_blocks.py — this confirms grading itself works
+    correctly once that's true)."""
+    item = VocabularyItem(english="upon", chinese="在……上", alternates=["on"])
+    assert grade_answer(item, "on") is True
+    assert grade_answer(item, "upon") is True
