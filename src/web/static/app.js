@@ -58,18 +58,27 @@
     // Persistent element, independent of showOnly(): visible whenever the
     // learner's recall outcome is still the relevant context (spec 004
     // FR-002/FR-003 — shown together with the sentence step and carried
-    // into the feedback step, not tied to whichever <section> is primary).
-    if (state.step === "sentence" || state.step === "feedback") {
+    // into the feedback step; spec 013 also carries it into the new
+    // "reveal" step, not tied to whichever <section> is primary).
+    if (state.step === "sentence" || state.step === "feedback" || state.step === "reveal") {
       showWordFeedback(state.correct, state.accepted_expressions);
     } else {
       wordFeedbackEl.hidden = true;
     }
   }
 
+  function renderContinueButton(state) {
+    // Persistent element (spec 013), like #word-feedback: reused for both
+    // "feedback" (sentence mode) and "reveal" (recall-only wrong answer)
+    // rather than duplicated per step.
+    continueButton.hidden = !(state.step === "feedback" || state.step === "reveal");
+  }
+
   function renderState(state) {
     showWarnings(state.warnings);
     showOnly(state.step);
     renderWordFeedback(state);
+    renderContinueButton(state);
 
     if (state.step === "recall") {
       chineseEl.textContent = state.chinese;
@@ -172,6 +181,14 @@
     if (state.step === "sentence" || state.step === "feedback") {
       // Sentence mode: the "sentence" step itself carries the word-feedback
       // stamp (spec 004) — render immediately, no separate reveal needed.
+      renderState(state);
+      return;
+    }
+
+    if (state.step === "reveal") {
+      // Recall-only, incorrect (spec 013): the session waits indefinitely
+      // here — no timer, no auto-advance. The persistent Continue button
+      // (renderContinueButton) is now visible and awaits a click.
       renderState(state);
       return;
     }

@@ -535,3 +535,61 @@ def test_post_select_invalid_mode_defaults_to_sentence(mock_request, tmp_path: P
     client.post("/api/answer", json={"answer": "receive"})
     state = client.get("/api/state").get_json()
     assert state["step"] == "sentence"
+
+
+@patch("src.web.session_state.request_correction")
+def test_post_answer_wrong_in_recall_only_mode_lands_on_reveal(mock_request, tmp_path: Path):
+    client = _make_client(
+        tmp_path,
+        vocab_text="---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n",
+        offer_choice=True,
+    )
+    client.post("/api/select", json={"collection": "unit1", "mode": "recall-only"})
+    resp = client.post("/api/answer", json={"answer": "wrong"})
+    assert resp.status_code == 200
+
+    state = client.get("/api/state").get_json()
+    assert state["step"] == "reveal"
+    assert state["answer"] == "wrong"
+    assert state["correct"] is False
+    assert state["accepted_expressions"] == ["receive"]
+    mock_request.assert_not_called()
+
+
+@patch("src.web.session_state.request_correction")
+def test_post_continue_from_reveal_records_attempt_and_advances(mock_request, tmp_path: Path):
+    progress_file = tmp_path / "progress.md"
+    client = _make_client(
+        tmp_path,
+        vocab_text="---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n",
+        offer_choice=True,
+    )
+    client.post("/api/select", json={"collection": "unit1", "mode": "recall-only"})
+    client.post("/api/answer", json={"answer": "wrong"})
+    assert not progress_file.exists()
+
+    resp = client.post("/api/continue")
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert data["step"] == "complete"
+    assert data["total"] == 1
+    assert data["correct"] == 0
+
+    text = progress_file.read_text(encoding="utf-8")
+    assert "item: receive" in text
+    assert "answer: wrong" in text
+    assert "correct: false" in text
+    assert "sentence:" not in text
+    assert "feedback:" not in text
+    mock_request.assert_not_called()
+
+
+def test_post_continue_rejected_from_recall_still_409_regardless_of_mode(tmp_path: Path):
+    client = _make_client(
+        tmp_path,
+        vocab_text="---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n",
+        offer_choice=True,
+    )
+    client.post("/api/select", json={"collection": "unit1", "mode": "recall-only"})
+    resp = client.post("/api/continue")
+    assert resp.status_code == 409

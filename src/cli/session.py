@@ -22,6 +22,10 @@ def _default_answer_input(prompt: str) -> str:
     return input(prompt)
 
 
+def _wait_for_continue(prompt: str = "Press Enter to continue...") -> None:
+    input(prompt)
+
+
 def run_recall_step(
     item: VocabularyItem,
     answer_input: Callable[[], str] | None = None,
@@ -133,6 +137,10 @@ def run_session(
     for item in items:
         recall_attempt = run_recall_step(item)
         if mode == "recall-only":
+            if not recall_attempt.correct:
+                # Wait for an explicit continue before moving on (spec
+                # 013) — a correct answer still advances immediately.
+                _wait_for_continue()
             attempt = recall_attempt
         else:
             sentence, feedback = run_sentence_step(item.english, base_url=ollama_url, model=model)

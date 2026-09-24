@@ -184,6 +184,33 @@ def test_choose_view_offers_a_mode_toggle():
     assert 'value="recall-only"' in choose_html
 
 
+def test_continue_button_exists_outside_step_sections():
+    """Spec 013: the Continue button must be a persistent element (like
+    #word-feedback), reused for both the "feedback" step (sentence mode)
+    and the new "reveal" step (recall-only wrong answer) — not nested
+    inside #feedback-view, which is hidden for the "reveal" step."""
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    assert 'id="continue-button"' in html
+
+    button_pos = html.index('id="continue-button"')
+    for section_id in ("recall-view", "sentence-view", "feedback-view"):
+        section_start, section_end = _section_bounds(html, section_id)
+        assert not (section_start < button_pos < section_end), (
+            f"continue-button must not be nested inside #{section_id}"
+        )
+
+
+def test_app_js_wrong_recall_only_answer_never_auto_advances():
+    """Spec 013: a wrong recall-only answer (state.step === "reveal")
+    must not schedule the setTimeout-based auto-advance used for a
+    correct one."""
+    js = JS_PATH.read_text(encoding="utf-8")
+    reveal_check_pos = js.index('state.step === "reveal"')
+    reveal_branch_end = js.index("}", js.index("renderState(state);", reveal_check_pos))
+    reveal_branch_body = js[reveal_check_pos:reveal_branch_end]
+    assert "setTimeout" not in reveal_branch_body
+
+
 def test_spinner_uses_hidden_attribute_not_a_separate_mechanism():
     """Regression guard (spec 005, User Story 2): confirms the spinner is
     actually covered by the [hidden] override above, rather than using

@@ -14,7 +14,7 @@ from src.services.matcher import grade_answer
 from src.services.progress_log import append_attempt
 from src.services.vocabulary_loader import load_vocabulary
 
-Step = str  # "empty" | "choose" | "recall" | "sentence" | "feedback" | "complete"
+Step = str  # "empty" | "choose" | "recall" | "sentence" | "feedback" | "reveal" | "complete"
 
 UNGROUPED_KEY = "__ungrouped__"
 
@@ -121,13 +121,19 @@ class PracticeSession:
             "correct": correct,
         }
 
-        if self.recall_only:
+        if self.recall_only and correct:
             # No sentence step at all in this mode (spec 012): finalize the
             # attempt immediately, the same way skip_sentence() already
             # does, instead of stashing pending_attempt and moving to
             # "sentence".
             append_attempt(self.progress_file, PracticeAttempt(**attempt))
             self._advance_after_attempt(correct)
+        elif self.recall_only:
+            # Incorrect, recall-only (spec 013): hold the attempt and wait
+            # for an explicit continue instead of auto-advancing, so the
+            # learner has unlimited time to study the correct expression.
+            self.pending_attempt = attempt
+            self.step = "reveal"
         else:
             self.pending_attempt = attempt
             self.step = "sentence"
@@ -254,6 +260,13 @@ class PracticeSession:
     def continue_to_next(self) -> None:
         if self.step == "complete":
             return
+        if self.step == "reveal":
+            # Recall-only, incorrect (spec 013): the attempt was held,
+            # unrecorded, at submit_answer() time — record it now, the
+            # moment the learner is done reviewing it.
+            append_attempt(self.progress_file, PracticeAttempt(**self.pending_attempt))
+            self._advance_after_attempt(self.pending_attempt["correct"])
+            return
         if self.step != "feedback":
             raise WrongStepError("not ready to continue")
 
@@ -275,7 +288,7 @@ class PracticeSession:
         item = self.current_item
         base["chinese"] = item.chinese
 
-        if self.step in ("sentence", "feedback"):
+        if self.step in ("sentence", "feedback", "reveal"):
             base["accepted_expressions"] = item.accepted_expressions()
             base["answer"] = self.pending_attempt["answer"]
             base["correct"] = self.pending_attempt["correct"]

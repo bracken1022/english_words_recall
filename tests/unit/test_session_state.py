@@ -553,7 +553,10 @@ def test_select_collection_default_mode_sets_flag_false(tmp_path: Path):
 
 
 @patch("src.web.session_state.request_correction")
-def test_submit_answer_recall_only_skips_sentence_step_and_advances(mock_request, tmp_path: Path):
+def test_submit_answer_recall_only_correct_skips_sentence_step_and_advances(mock_request, tmp_path: Path):
+    """Regression guard (spec 013): a correct recall-only answer keeps
+    spec 012's exact behavior — immediate finalize, immediate advance,
+    never entering "reveal"."""
     vocab_dir = _write_vocab(tmp_path)  # "receive" then "give up"
     progress_file = tmp_path / "progress.md"
     session = PracticeSession(vocab_dir=vocab_dir, progress_file=progress_file, mode="recall-only")
@@ -566,15 +569,84 @@ def test_submit_answer_recall_only_skips_sentence_step_and_advances(mock_request
     assert session.pending_attempt is None
     mock_request.assert_not_called()
 
-    session.submit_answer("wrong")
-    assert session.step == "complete"
-    assert session.current_index == 2
-    assert session.correct_count == 1
+
+@patch("src.web.session_state.request_correction")
+def test_submit_answer_recall_only_incorrect_holds_in_reveal_step(mock_request, tmp_path: Path):
+    """Spec 013: a wrong recall-only answer must NOT auto-advance — it
+    stops in "reveal", holding the attempt unfinalized until
+    continue_to_next() is called."""
+    vocab_dir = _write_vocab(tmp_path)  # "receive" then "give up"
+    progress_file = tmp_path / "progress.md"
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=progress_file, mode="recall-only")
+
+    result = session.submit_answer("wrong")
+    assert result["correct"] is False
+    assert session.step == "reveal"
+    assert session.current_index == 0
+    assert session.correct_count == 0
+    assert session.pending_attempt is not None
     mock_request.assert_not_called()
 
+    progress_text = progress_file.read_text(encoding="utf-8") if progress_file.exists() else ""
+    assert "item: receive" not in progress_text
+
+
+@patch("src.web.session_state.request_correction")
+def test_continue_to_next_from_reveal_records_attempt_and_advances(mock_request, tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)  # "receive" then "give up"
+    progress_file = tmp_path / "progress.md"
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=progress_file, mode="recall-only")
+
+    session.submit_answer("wrong")
+    assert session.step == "reveal"
+
+    session.continue_to_next()
+
+    assert session.step == "recall"
+    assert session.current_index == 1
+    assert session.correct_count == 0
+    assert session.pending_attempt is None
+    mock_request.assert_not_called()
+
+    progress_text = progress_file.read_text(encoding="utf-8")
+    assert "item: receive" in progress_text
+    assert "answer: wrong" in progress_text
+    assert "correct: false" in progress_text
+    assert "sentence:" not in progress_text
+    assert "feedback:" not in progress_text
+
+
+@patch("src.web.session_state.request_correction")
+def test_continue_to_next_from_reveal_on_last_item_reaches_complete(mock_request, tmp_path: Path):
+    vocab_dir = tmp_path / "one_item"
+    vocab_dir.mkdir()
+    (vocab_dir / "unit1.md").write_text("---\nenglish: receive\nchinese: 收到\n---\n")
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", mode="recall-only"
+    )
+
+    session.submit_answer("wrong")
+    session.continue_to_next()
+
+    assert session.step == "complete"
     state = session.state()
-    assert state["total"] == 2
-    assert state["correct"] == 1
+    assert state["total"] == 1
+    assert state["correct"] == 0
+
+
+def test_state_reveal_step_exposes_answer_fields_without_sentence_or_feedback(tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", mode="recall-only")
+
+    session.submit_answer("wrong")
+    state = session.state()
+
+    assert state["step"] == "reveal"
+    assert state["answer"] == "wrong"
+    assert state["correct"] is False
+    assert state["accepted_expressions"] == ["receive"]
+    assert "sentence" not in state
+    assert "feedback" not in state
 
 
 @patch("src.web.session_state.request_correction")
