@@ -480,3 +480,58 @@ def test_post_select_missing_collection_is_400_regardless_of_order(tmp_path: Pat
     resp = client.post("/api/select", json={"order": "random"})
     assert resp.status_code == 400
     assert resp.get_json()["error"] == "missing 'collection'"
+
+
+def test_post_select_recall_only_mode_is_accepted(tmp_path: Path):
+    client = _make_client(
+        tmp_path,
+        vocab_text="---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n",
+        offer_choice=True,
+    )
+    resp = client.post("/api/select", json={"collection": "unit1", "mode": "recall-only"})
+    assert resp.status_code == 200
+    assert resp.get_json()["step"] == "recall"
+
+
+@patch("src.web.session_state.request_correction")
+def test_post_select_recall_only_then_answer_skips_sentence_step(mock_request, tmp_path: Path):
+    client = _make_client(
+        tmp_path,
+        vocab_text="---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n",
+        offer_choice=True,
+    )
+    client.post("/api/select", json={"collection": "unit1", "mode": "recall-only"})
+    resp = client.post("/api/answer", json={"answer": "receive"})
+    assert resp.status_code == 200
+
+    state = client.get("/api/state").get_json()
+    assert state["step"] == "complete"
+    assert state["total"] == 1
+    assert state["correct"] == 1
+    mock_request.assert_not_called()
+
+
+@patch("src.web.session_state.request_correction")
+def test_post_select_mode_absent_defaults_to_sentence(mock_request, tmp_path: Path):
+    client = _make_client(
+        tmp_path,
+        vocab_text="---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n",
+        offer_choice=True,
+    )
+    client.post("/api/select", json={"collection": "unit1"})
+    client.post("/api/answer", json={"answer": "receive"})
+    state = client.get("/api/state").get_json()
+    assert state["step"] == "sentence"
+
+
+@patch("src.web.session_state.request_correction")
+def test_post_select_invalid_mode_defaults_to_sentence(mock_request, tmp_path: Path):
+    client = _make_client(
+        tmp_path,
+        vocab_text="---\nenglish: receive\nchinese: 收到\ngroup: unit1\n---\n",
+        offer_choice=True,
+    )
+    client.post("/api/select", json={"collection": "unit1", "mode": "not-a-real-value"})
+    client.post("/api/answer", json={"answer": "receive"})
+    state = client.get("/api/state").get_json()
+    assert state["step"] == "sentence"

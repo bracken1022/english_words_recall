@@ -494,3 +494,127 @@ def test_select_collection_random_order_is_a_permutation_of_the_same_items(tmp_p
     session.select_collection(None, order="random")
     assert sorted(i.english for i in session.items) == ["mystery", "receive", "tailor"]
 
+
+def test_init_locked_mode_recall_only_sets_flag_true(tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", mode="recall-only"
+    )
+    assert session.recall_only is True
+
+
+def test_init_locked_mode_sentence_mode_sets_flag_false(tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", mode="sentence"
+    )
+    assert session.recall_only is False
+
+
+def test_init_locked_mode_default_sets_flag_false(tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md")
+    assert session.recall_only is False
+
+
+def test_init_interactive_placeholder_flag_is_false_before_selection(tmp_path: Path):
+    vocab_dir = _write_multi_group_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    assert session.recall_only is False
+
+
+def test_select_collection_recall_only_sets_flag_true(tmp_path: Path):
+    vocab_dir = _write_multi_group_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    session.select_collection(None, mode="recall-only")
+    assert session.recall_only is True
+
+
+def test_select_collection_sentence_mode_sets_flag_false(tmp_path: Path):
+    vocab_dir = _write_multi_group_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    session.select_collection(None, mode="sentence")
+    assert session.recall_only is False
+
+
+def test_select_collection_default_mode_sets_flag_false(tmp_path: Path):
+    vocab_dir = _write_multi_group_vocab(tmp_path)
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    session.select_collection(None)
+    assert session.recall_only is False
+
+
+@patch("src.web.session_state.request_correction")
+def test_submit_answer_recall_only_skips_sentence_step_and_advances(mock_request, tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)  # "receive" then "give up"
+    progress_file = tmp_path / "progress.md"
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=progress_file, mode="recall-only")
+
+    result = session.submit_answer("receive")
+    assert result["correct"] is True
+    assert session.step == "recall"
+    assert session.current_index == 1
+    assert session.correct_count == 1
+    assert session.pending_attempt is None
+    mock_request.assert_not_called()
+
+    session.submit_answer("wrong")
+    assert session.step == "complete"
+    assert session.current_index == 2
+    assert session.correct_count == 1
+    mock_request.assert_not_called()
+
+    state = session.state()
+    assert state["total"] == 2
+    assert state["correct"] == 1
+
+
+@patch("src.web.session_state.request_correction")
+def test_submit_answer_recall_only_writes_progress_without_sentence_or_feedback(
+    mock_request, tmp_path: Path
+):
+    vocab_dir = _write_vocab(tmp_path)
+    progress_file = tmp_path / "progress.md"
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=progress_file, mode="recall-only")
+
+    session.submit_answer("receive")
+
+    text = progress_file.read_text(encoding="utf-8")
+    assert "item: receive" in text
+    assert "answer: receive" in text
+    assert "correct: true" in text
+    assert "sentence:" not in text
+    assert "feedback:" not in text
+    mock_request.assert_not_called()
+
+
+def test_submit_answer_sentence_mode_unaffected(tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", mode="sentence")
+    result = session.submit_answer("receive")
+    assert result["correct"] is True
+    assert session.step == "sentence"
+    assert session.pending_attempt is not None
+
+
+@patch("src.web.session_state.request_correction")
+def test_select_collection_recall_only_then_submit_answer_skips_sentence(mock_request, tmp_path: Path):
+    vocab_dir = _write_multi_group_vocab(tmp_path)  # unit1 -> only "receive"
+    session = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md", offer_choice=True
+    )
+    session.select_collection("unit1", mode="recall-only")
+    assert session.recall_only is True
+
+    session.submit_answer("receive")
+    assert session.step == "complete"
+    mock_request.assert_not_called()
+

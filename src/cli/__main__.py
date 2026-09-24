@@ -45,6 +45,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
         default="sequential",
         help="Order to present words in (default: sequential)",
     )
+    parser.add_argument(
+        "--mode",
+        choices=["sentence", "recall-only"],
+        default="sentence",
+        help="Practice mode: sentence-writing or recall only (default: sentence)",
+    )
     return parser
 
 
@@ -58,6 +64,7 @@ def main() -> None:
         ollama_url=args.ollama_url,
         model=args.model,
         order=args.order,
+        mode=args.mode,
     )
 
 

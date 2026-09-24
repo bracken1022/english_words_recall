@@ -28,6 +28,16 @@ def build_arg_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--mode",
+        choices=["sentence", "recall-only"],
+        default="sentence",
+        help=(
+            "Practice mode: sentence-writing or recall only (default: sentence). "
+            "Only takes effect when --group is also given; otherwise the "
+            "interactive choose screen governs mode."
+        ),
+    )
+    parser.add_argument(
         "--host",
         default="0.0.0.0",
         help="Bind address (default: 0.0.0.0, reachable from other devices on the local network)",
@@ -47,6 +57,7 @@ def main() -> None:
         model=args.model,
         offer_choice=args.group is None,
         order=args.order,
+        mode=args.mode,
     )
     print(f"English Tutor web UI running at http://{args.host}:{args.port} (Ctrl+C to stop)")
     app.run(host=args.host, port=args.port)

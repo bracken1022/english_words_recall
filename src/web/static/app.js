@@ -14,6 +14,7 @@
   const wordFeedbackEl = document.getElementById("word-feedback");
   const answerForm = document.getElementById("answer-form");
   const answerInput = document.getElementById("answer-input");
+  const answerSubmitButton = answerForm.querySelector("button[type=submit]");
   const sentenceForm = document.getElementById("sentence-form");
   const sentenceInput = document.getElementById("sentence-input");
   const sentenceSubmitButton = sentenceForm.querySelector("button[type=submit]");
@@ -26,6 +27,7 @@
   const transcribingEl = document.getElementById("transcribing");
 
   let lastAcceptedExpressions = [];
+  const RECALL_ONLY_FEEDBACK_DELAY_MS = 1200;
 
   function showOnly(step) {
     for (const [name, el] of Object.entries(views)) {
@@ -42,19 +44,23 @@
     }
   }
 
+  function showWordFeedback(correct, acceptedExpressions) {
+    const expressions = (acceptedExpressions || []).join(", ");
+    wordFeedbackEl.textContent = correct
+      ? `Correct: ${expressions}`
+      : `Incorrect. The correct expression is: ${expressions}`;
+    wordFeedbackEl.classList.toggle("feedback-correct", correct === true);
+    wordFeedbackEl.classList.toggle("feedback-incorrect", correct === false);
+    wordFeedbackEl.hidden = false;
+  }
+
   function renderWordFeedback(state) {
     // Persistent element, independent of showOnly(): visible whenever the
     // learner's recall outcome is still the relevant context (spec 004
     // FR-002/FR-003 — shown together with the sentence step and carried
     // into the feedback step, not tied to whichever <section> is primary).
     if (state.step === "sentence" || state.step === "feedback") {
-      const expressions = (state.accepted_expressions || []).join(", ");
-      wordFeedbackEl.textContent = state.correct
-        ? `Correct: ${expressions}`
-        : `Incorrect. The correct expression is: ${expressions}`;
-      wordFeedbackEl.classList.toggle("feedback-correct", state.correct === true);
-      wordFeedbackEl.classList.toggle("feedback-incorrect", state.correct === false);
-      wordFeedbackEl.hidden = false;
+      showWordFeedback(state.correct, state.accepted_expressions);
     } else {
       wordFeedbackEl.hidden = true;
     }
@@ -89,6 +95,11 @@
     return checked ? checked.value : "sequential";
   }
 
+  function getSelectedMode() {
+    const checked = document.querySelector('input[name="mode-choice"]:checked');
+    return checked ? checked.value : "sentence";
+  }
+
   function renderChoose(collections) {
     chooseListEl.innerHTML = "";
     for (const entry of collections) {
@@ -99,7 +110,11 @@
         await fetch("/api/select", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ collection: entry.key, order: getSelectedOrder() }),
+          body: JSON.stringify({
+            collection: entry.key,
+            order: getSelectedOrder(),
+            mode: getSelectedMode(),
+          }),
         });
         await fetchState();
       });
@@ -145,14 +160,34 @@
 
   answerForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    await fetch("/api/answer", {
+    const resp = await fetch("/api/answer", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ answer: answerInput.value }),
     });
-    // Word feedback (Correct:/Incorrect. ...) is rendered from GET
-    // /api/state, not from this response — see renderWordFeedback().
-    await fetchState();
+    const result = await resp.json();
+    const stateResp = await fetch("/api/state");
+    const state = await stateResp.json();
+
+    if (state.step === "sentence" || state.step === "feedback") {
+      // Sentence mode: the "sentence" step itself carries the word-feedback
+      // stamp (spec 004) — render immediately, no separate reveal needed.
+      renderState(state);
+      return;
+    }
+
+    // Recall-only mode (spec 012 FR-003): submit_answer() advances straight
+    // past "sentence" to "recall"/"complete", so there is no step left to
+    // carry the correct/incorrect reveal. Show it directly from this
+    // response and hold it briefly before moving on, so the learner still
+    // sees whether they were right (acceptance scenario 2).
+    showWordFeedback(result.correct, result.accepted_expressions);
+    answerInput.disabled = true;
+    answerSubmitButton.disabled = true;
+    await new Promise((resolve) => setTimeout(resolve, RECALL_ONLY_FEEDBACK_DELAY_MS));
+    answerInput.disabled = false;
+    answerSubmitButton.disabled = false;
+    renderState(state);
   });
 
   sentenceForm.addEventListener("submit", async (event) => {

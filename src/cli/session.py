@@ -107,11 +107,15 @@ def run_session(
     ollama_url: str = "http://localhost:11434",
     model: str = DEFAULT_MODEL,
     order: str = "sequential",
+    mode: str = "sentence",
 ) -> None:
     """Run a full practice session: load items, filter, then walk forward
     through the recall step for each one, one at a time, no skip/back
     (FR-015, FR-016). *order* ("sequential" [default] or "random", spec
-    011) shuffles the filtered pool once, before the walk begins."""
+    011) shuffles the filtered pool once, before the walk begins. *mode*
+    ("sentence" [default] or "recall-only", spec 012) skips the
+    sentence-writing step (and any correction request) entirely when set
+    to "recall-only"."""
     items, warnings = load_vocabulary(vocab_dir)
     for warning in warnings:
         console.print(f"[yellow]Warning:[/yellow] {warning}")
@@ -128,14 +132,17 @@ def run_session(
 
     for item in items:
         recall_attempt = run_recall_step(item)
-        sentence, feedback = run_sentence_step(item.english, base_url=ollama_url, model=model)
-        attempt = PracticeAttempt(
-            timestamp=recall_attempt.timestamp,
-            item=recall_attempt.item,
-            answer=recall_attempt.answer,
-            correct=recall_attempt.correct,
-            sentence=sentence,
-            feedback=feedback,
-        )
+        if mode == "recall-only":
+            attempt = recall_attempt
+        else:
+            sentence, feedback = run_sentence_step(item.english, base_url=ollama_url, model=model)
+            attempt = PracticeAttempt(
+                timestamp=recall_attempt.timestamp,
+                item=recall_attempt.item,
+                answer=recall_attempt.answer,
+                correct=recall_attempt.correct,
+                sentence=sentence,
+                feedback=feedback,
+            )
         append_attempt(progress_file, attempt)
         print()

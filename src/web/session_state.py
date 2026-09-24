@@ -31,6 +31,7 @@ class PracticeSession:
         group: str | None = None,
         offer_choice: bool = False,
         order: str = "sequential",
+        mode: str = "sentence",
     ):
         """*offer_choice* opts into the interactive collection-choice step
         (spec 007); it defaults to False so every existing caller that
@@ -42,6 +43,12 @@ class PracticeSession:
         *order* ("sequential" [default] or "random", spec 011) is only
         consumed here in the locked branch below — when *offer_choice* wins
         instead, select_collection()'s own *order* argument governs it.
+
+        *mode* ("sentence" [default] or "recall-only", spec 012) resolves
+        into self.recall_only, which (unlike order) is stored and consulted
+        again on every submit_answer() call for the rest of the session. In
+        the interactive branch it's just a placeholder (False) — governed
+        instead by select_collection()'s own *mode* argument.
         """
         self.progress_file = progress_file
         self.vocab_dir = vocab_dir
@@ -61,6 +68,7 @@ class PracticeSession:
 
         if interactive:
             self.items = []
+            self.recall_only = False
             self.step: Step = "choose" if self.all_items else "empty"
         else:
             if group is not None:
@@ -68,6 +76,7 @@ class PracticeSession:
             if order == "random":
                 random.shuffle(items)
             self.items = items
+            self.recall_only = mode == "recall-only"
             self.step = "recall" if self.items else "empty"
 
     @property
@@ -105,13 +114,24 @@ class PracticeSession:
 
         item = self.current_item
         correct = grade_answer(item, answer)
-        self.pending_attempt = {
+        attempt = {
             "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
             "item": item.english,
             "answer": answer,
             "correct": correct,
         }
-        self.step = "sentence"
+
+        if self.recall_only:
+            # No sentence step at all in this mode (spec 012): finalize the
+            # attempt immediately, the same way skip_sentence() already
+            # does, instead of stashing pending_attempt and moving to
+            # "sentence".
+            append_attempt(self.progress_file, PracticeAttempt(**attempt))
+            self._advance_after_attempt(correct)
+        else:
+            self.pending_attempt = attempt
+            self.step = "sentence"
+
         return {"correct": correct, "accepted_expressions": item.accepted_expressions()}
 
     def submit_sentence(
@@ -164,12 +184,16 @@ class PracticeSession:
             "explanation": result.explanation,
         }
 
-    def select_collection(self, key: str | None, order: str = "sequential") -> None:
+    def select_collection(
+        self, key: str | None, order: str = "sequential", mode: str = "sentence"
+    ) -> None:
         """Scope the session to one collection (spec 007): key is None for
         "practice everything", UNGROUPED_KEY for untagged items, or a real
         group value. Valid only from "choose"; resets progress counters
         for the new pass, preserving self.all_items's order unless *order*
-        is "random" (spec 011), in which case it's shuffled once here."""
+        is "random" (spec 011), in which case it's shuffled once here.
+        *mode* ("sentence" [default] or "recall-only", spec 012) resolves
+        self.recall_only for the whole session that follows."""
         if self.step != "choose":
             raise WrongStepError("not choosing a collection")
 
@@ -183,6 +207,7 @@ class PracticeSession:
         if order == "random":
             random.shuffle(self.items)
 
+        self.recall_only = mode == "recall-only"
         self.current_index = 0
         self.pending_attempt = None
         self.last_correction = None
@@ -197,10 +222,15 @@ class PracticeSession:
         if self.step != "sentence":
             raise WrongStepError("not awaiting a sentence")
 
-        attempt = PracticeAttempt(**self.pending_attempt)
-        append_attempt(self.progress_file, attempt)
+        append_attempt(self.progress_file, PracticeAttempt(**self.pending_attempt))
+        self._advance_after_attempt(self.pending_attempt["correct"])
 
-        if self.pending_attempt["correct"]:
+    def _advance_after_attempt(self, correct: bool) -> None:
+        """Shared tail for finalizing a completed item (spec 006's
+        skip_sentence, continue_to_next, and spec 012's recall-only
+        submit_answer): tally if correct, clear the pending attempt/
+        correction, advance to the next item or "complete"."""
+        if correct:
             self.correct_count += 1
 
         self.pending_attempt = None
@@ -227,13 +257,7 @@ class PracticeSession:
         if self.step != "feedback":
             raise WrongStepError("not ready to continue")
 
-        if self.pending_attempt["correct"]:
-            self.correct_count += 1
-
-        self.pending_attempt = None
-        self.last_correction = None
-        self.current_index += 1
-        self.step = "complete" if self.current_index >= len(self.items) else "recall"
+        self._advance_after_attempt(self.pending_attempt["correct"])
 
     def state(self) -> dict:
         base = {"step": self.step, "warnings": self.warnings}

@@ -18,6 +18,7 @@ def create_app(
     model: str = "qwen3:14b",
     offer_choice: bool = False,
     order: str = "sequential",
+    mode: str = "sentence",
 ) -> Flask:
     app = Flask(__name__)
     session = PracticeSession(
@@ -26,6 +27,7 @@ def create_app(
         group=group,
         offer_choice=offer_choice,
         order=order,
+        mode=mode,
     )
     app.config["OLLAMA_URL"] = ollama_url
     app.config["MODEL"] = model
@@ -79,8 +81,11 @@ def create_app(
         select_order = body.get("order")
         if select_order not in ("sequential", "random"):
             select_order = "sequential"
+        select_mode = body.get("mode")
+        if select_mode not in ("sentence", "recall-only"):
+            select_mode = "sentence"
         try:
-            session.select_collection(body["collection"], order=select_order)
+            session.select_collection(body["collection"], order=select_order, mode=select_mode)
         except WrongStepError as exc:
             return jsonify({"error": str(exc)}), 409
         return jsonify(session.state())

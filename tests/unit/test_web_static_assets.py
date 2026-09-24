@@ -145,6 +145,45 @@ def test_choose_view_offers_an_order_toggle():
     assert 'value="random"' in choose_html
 
 
+def test_app_js_tracks_mode_and_sends_it_with_select():
+    """Spec 012: the choose screen's mode toggle is submitted together
+    with the collection (and order) in one POST /api/select call."""
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert "mode-choice" in js
+    assert "getSelectedMode" in js
+    select_call_start = js.index('await fetch("/api/select"')
+    select_call_end = js.index(");", select_call_start)
+    assert "mode" in js[select_call_start:select_call_end]
+
+
+def test_app_js_reveals_word_feedback_in_recall_only_mode_before_advancing():
+    """Bugfix for spec 012 FR-003: recall-only mode's submit_answer()
+    advances straight past "sentence" to "recall"/"complete", so
+    renderWordFeedback() (which only shows the stamp for state.step ===
+    "sentence"/"feedback") never displays it. app.js's answer-submit
+    handler must render the stamp directly from POST /api/answer's own
+    response whenever the state that follows isn't "sentence"/"feedback",
+    holding it visible briefly before advancing."""
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert "showWordFeedback" in js
+    assert "setTimeout" in js
+    answer_handler_start = js.index('answerForm.addEventListener("submit"')
+    answer_handler_end = js.index("});", js.index("renderState(state);", answer_handler_start))
+    handler_body = js[answer_handler_start:answer_handler_end]
+    assert "showWordFeedback(result.correct, result.accepted_expressions)" in handler_body
+
+
+def test_choose_view_offers_a_mode_toggle():
+    """Spec 012: the mode choice lives on the existing collection/order
+    choice screen (specs 007/011), not a separate one."""
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    choose_start, choose_end = _section_bounds(html, "choose-view")
+    choose_html = html[choose_start:choose_end]
+    assert 'name="mode-choice"' in choose_html
+    assert 'value="sentence"' in choose_html
+    assert 'value="recall-only"' in choose_html
+
+
 def test_spinner_uses_hidden_attribute_not_a_separate_mechanism():
     """Regression guard (spec 005, User Story 2): confirms the spinner is
     actually covered by the [hidden] override above, rather than using
