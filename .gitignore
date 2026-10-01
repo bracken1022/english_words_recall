@@ -26,3 +26,6 @@ htmlcov/
 # Local runtime data (learner-specific, not part of the app itself)
 /vocabulary/
 /progress.md
+
+# Design workflow screenshots (spec 014)
+/design/verification/

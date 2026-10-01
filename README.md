@@ -182,3 +182,19 @@ appear and typing works exactly as it always has.
 
 See `specs/` (one directory per feature, each with its own spec, plan, and
 design artifacts) for the full history this project was built from.
+
+### Design workflow (reference-driven UI)
+
+To redesign a page from visual references, drop screenshots into
+`design/references/<page>/` (shared styles go in `design/references/shared/`)
+and ask Claude Code:
+
+> Redesign the vocabulary practice page using the frontend-design skill and the
+> references in design/references/vocabulary-practice.
+
+The `frontend-design` project skill (`.claude/skills/frontend-design/`) works
+out a written design interpretation first. It then implements within the
+existing templates and CSS without changing learning behavior, and checks the
+result with screenshots at desktop and mobile widths, against a fixture
+vocabulary. `design/` is development-only: the app never reads it. See
+`design/README.md`.
