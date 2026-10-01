@@ -4,76 +4,123 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>English Tutor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,wght@0,400;0,600;1,400&family=Noto+Serif+SC:wght@400;600&display=swap">
+  <link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/duotone/style.css">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
-  <main id="app">
-    <div class="sheet">
-      <div class="sheet__content">
-        <p class="letterhead">English Tutor</p>
+  <header class="nav site-header">
+    <span class="nav-brand">English Tutor</span>
+    <button id="end-session-button" type="button" class="btn btn-ghost" hidden>End session</button>
+  </header>
 
-        <div id="warnings" class="warnings" hidden></div>
+  <main id="app" class="page">
+    <div id="warnings" class="warnings" role="status" hidden></div>
 
-        <section id="choose-view" hidden>
-          <p class="prose">Which words do you want to practice?</p>
-          <fieldset class="order-toggle">
-            <legend>Order</legend>
-            <label><input type="radio" name="order-choice" value="sequential" checked> Sequential</label>
-            <label><input type="radio" name="order-choice" value="random"> Random</label>
-          </fieldset>
-          <fieldset class="order-toggle">
-            <legend>Mode</legend>
-            <label><input type="radio" name="mode-choice" value="sentence" checked> Sentence</label>
-            <label><input type="radio" name="mode-choice" value="recall-only"> Recall only</label>
-          </fieldset>
-          <div id="choose-list" class="choose-list"></div>
-        </section>
-
-        <section id="empty-view" hidden>
-          <p class="prose">No words are waiting. Add some to the vocabulary folder to start a session.</p>
-        </section>
-
-        <section id="complete-view" hidden>
-          <div class="stamp stamp--done" aria-hidden="true">done</div>
-          <p class="prose">Session complete — you've gone through every word.</p>
-          <p id="session-tally" class="prose"></p>
-          <button id="restart-button" type="button" hidden>Practice again</button>
-        </section>
-
-        <section id="recall-view" hidden>
-          <p class="meaning"><span id="chinese"></span></p>
-          <form id="answer-form">
-            <label for="answer-input">Write the English word</label>
-            <div class="field-row">
-              <input id="answer-input" name="answer" type="text" autocomplete="off" autocapitalize="off" spellcheck="false">
-              <button type="submit">Check</button>
-            </div>
-          </form>
-        </section>
-
-        <p id="word-feedback" aria-live="polite" hidden></p>
-
-        <section id="sentence-view" hidden>
-          <p class="prose">Write a sentence using</p>
-          <p class="target-slot"><span id="target-expression"></span></p>
-          <form id="sentence-form">
-            <label for="sentence-input">Your sentence</label>
-            <div class="field-row">
-              <input id="sentence-input" name="sentence" type="text" autocomplete="off" spellcheck="false">
-              <button type="submit">Review</button>
-            </div>
-          </form>
-          <button id="mic-button" type="button" class="mic-button" hidden>Speak instead</button>
-          <div id="transcribing" class="spinner" hidden aria-live="polite"><span class="spinner__dot" aria-hidden="true"></span>Transcribing...</div>
-          <div id="spinner" class="spinner" hidden aria-live="polite"><span class="spinner__dot" aria-hidden="true"></span>Reviewing your sentence...</div>
-        </section>
-
-        <section id="feedback-view" hidden>
-          <div id="feedback-result" aria-live="polite"></div>
-        </section>
-
-        <button id="continue-button" type="button" hidden>Continue</button>
+    <section id="choose-view" class="screen" hidden>
+      <h1 class="setup-title">Which words do you want to practice?</h1>
+      <div class="setup-options">
+        <fieldset class="option-group">
+          <legend class="label">Order</legend>
+          <div class="seg">
+            <label class="seg-opt"><input type="radio" name="order-choice" value="sequential" checked>Sequential</label>
+            <label class="seg-opt"><input type="radio" name="order-choice" value="random">Random</label>
+          </div>
+        </fieldset>
+        <fieldset class="option-group">
+          <legend class="label">Mode</legend>
+          <div class="seg">
+            <label class="seg-opt"><input type="radio" name="mode-choice" value="sentence" checked>Sentence</label>
+            <label class="seg-opt"><input type="radio" name="mode-choice" value="recall-only">Recall only</label>
+          </div>
+          <p id="mode-hint" class="option-hint">Recall the word, then write or say a sentence with it.</p>
+        </fieldset>
       </div>
+      <div class="word-sets">
+        <h2 class="label">Word sets</h2>
+        <div id="choose-list" class="choose-list"></div>
+      </div>
+    </section>
+
+    <section id="empty-view" class="screen" hidden>
+      <h1>No words are waiting.</h1>
+      <p class="text-muted lead">Add some to the vocabulary folder to start a session.</p>
+    </section>
+
+    <section id="recall-view" class="screen" hidden>
+      <p class="label label--accent">Meaning</p>
+      <h1 id="chinese" class="meanings" lang="zh-Hans"></h1>
+      <form id="answer-form" class="field answer-field">
+        <label for="answer-input">Write the English word</label>
+        <div class="field-row">
+          <input id="answer-input" class="answer-input" name="answer" type="text" placeholder="Type here" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <button type="submit" class="btn btn-primary btn-lg">Check</button>
+        </div>
+      </form>
+      <div id="recall-hints" class="hint-row">
+        <span class="key-hint"><kbd class="tag tag-neutral">Enter</kbd> to check</span>
+        <button id="show-answer-button" type="button" class="btn btn-ghost">Show answer</button>
+      </div>
+    </section>
+
+    <div id="word-feedback" class="word-feedback" aria-live="polite" hidden></div>
+
+    <section id="sentence-view" class="screen" hidden>
+      <span class="tag tag-accent recalled-tag"><i class="ph-duotone ph-check-circle" aria-hidden="true"></i>Recalled</span>
+      <p class="label sentence-label">Use it in a sentence</p>
+      <div class="target-row">
+        <h1 class="target-slot"><span id="target-expression"></span></h1>
+        <span id="target-meaning" class="target-meaning text-muted" lang="zh-Hans"></span>
+      </div>
+      <form id="sentence-form" class="sentence-form">
+        <label for="sentence-input" class="visually-hidden">Your sentence</label>
+        <div class="field-row">
+          <textarea id="sentence-input" class="input sentence-input" name="sentence" rows="3" placeholder="Your sentence"></textarea>
+        </div>
+        <div id="recording-status" class="status-line" hidden>
+          <span class="status-dot status-dot--recording" aria-hidden="true"></span>
+          <span>Listening</span>
+          <span id="recording-time" class="text-muted tabular">0:00</span>
+        </div>
+        <div id="transcribing" class="status-line status-line--italic" hidden aria-live="polite"><span class="status-dot" aria-hidden="true"></span>Transcribing…</div>
+        <div id="spinner" class="status-line status-line--italic" hidden aria-live="polite"><span class="status-dot" aria-hidden="true"></span>Reviewing your sentence…</div>
+        <div class="action-row">
+          <button type="submit" class="btn btn-primary btn-lg" disabled>Review</button>
+          <button id="mic-button" type="button" class="btn btn-secondary btn-lg" hidden><i class="ph-duotone ph-microphone" aria-hidden="true"></i><span class="mic-label">Speak instead</span></button>
+          <button id="skip-button" type="button" class="btn btn-ghost">Skip</button>
+          <span class="key-hint key-hint--end"><kbd class="tag tag-neutral"><span id="mod-key">Ctrl</span> Enter</kbd> to review</span>
+        </div>
+      </form>
+    </section>
+
+    <section id="feedback-view" class="screen feedback" hidden>
+      <div id="feedback-result" aria-live="polite"></div>
+    </section>
+
+    <section id="complete-view" class="screen" hidden>
+      <div class="score-row">
+        <div class="cmyk-num score" aria-hidden="true">
+          <span class="paper"></span>
+          <span class="plate plate-c"></span>
+          <span class="plate plate-m"></span>
+          <span class="plate plate-y"></span>
+        </div>
+        <div class="score-text">
+          <h1>Session complete</h1>
+          <p id="session-tally" class="text-muted lead"></p>
+        </div>
+      </div>
+      <div class="action-row action-row--spaced">
+        <button id="restart-button" type="button" class="btn btn-secondary btn-lg" hidden>Back to word sets</button>
+      </div>
+    </section>
+
+    <div id="step-actions" class="action-row action-row--spaced" hidden>
+      <button id="continue-button" type="button" class="btn btn-primary btn-lg" hidden>Continue</button>
+      <button id="retry-sentence-button" type="button" class="btn btn-secondary btn-lg" hidden>Try another sentence</button>
+      <span class="key-hint"><kbd class="tag tag-neutral">Enter</kbd> to continue</span>
     </div>
   </main>
 

@@ -102,14 +102,15 @@ def test_skipped_word_counts_correctly_and_is_distinguishable_in_history(mock_re
     client.post("/api/sentence", json={"sentence": "I received a gift."})
     client.post("/api/continue")
 
-    # Word 2: answered incorrectly, sentence step skipped.
-    client.post("/api/answer", json={"answer": "wrong"})
+    # Word 2: answered correctly, sentence step skipped (only a correct
+    # recall reaches the sentence step since the Broadsheet redesign).
+    client.post("/api/answer", json={"answer": "give up"})
     resp = client.post("/api/skip")
     state = resp.get_json()
 
     assert state["step"] == "complete"
     assert state["total"] == 2
-    assert state["correct"] == 1  # only word 1 was recalled correctly; skip doesn't change this
+    assert state["correct"] == 2  # skipping the sentence keeps the recall outcome
 
     progress_text = progress_file.read_text(encoding="utf-8")
     completed_block = progress_text[: progress_text.index("give up")]
@@ -253,11 +254,11 @@ def test_word_feedback_and_sentence_prompt_both_present_after_submission(tmp_pat
     the data level (GET /api/state carries both), independent of how the
     front end lays them out."""
     client = _make_client(tmp_path, vocab_text="---\nenglish: receive\nchinese: 收到\n---\n")
-    client.post("/api/answer", json={"answer": "wrong"})
+    client.post("/api/answer", json={"answer": "receive"})
     state = client.get("/api/state").get_json()
     assert state["step"] == "sentence"
-    assert state["correct"] is False
-    assert state["answer"] == "wrong"
+    assert state["correct"] is True
+    assert state["answer"] == "receive"
     assert "accepted_expressions" in state  # the sentence prompt's own data
 
 

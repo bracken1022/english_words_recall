@@ -121,22 +121,16 @@ class PracticeSession:
             "correct": correct,
         }
 
-        if self.recall_only and correct:
-            # No sentence step at all in this mode (spec 012): finalize the
-            # attempt immediately, the same way skip_sentence() already
-            # does, instead of stashing pending_attempt and moving to
-            # "sentence".
-            append_attempt(self.progress_file, PracticeAttempt(**attempt))
-            self._advance_after_attempt(correct)
-        elif self.recall_only:
-            # Incorrect, recall-only (spec 013): hold the attempt and wait
-            # for an explicit continue instead of auto-advancing, so the
-            # learner has unlimited time to study the correct expression.
-            self.pending_attempt = attempt
-            self.step = "reveal"
-        else:
-            self.pending_attempt = attempt
+        self.pending_attempt = attempt
+        if correct and not self.recall_only:
             self.step = "sentence"
+        else:
+            # Broadsheet redesign: only a correct recall in sentence mode
+            # earns the sentence step. Every other outcome (any recall-only
+            # answer, or a wrong answer in sentence mode) holds in "reveal"
+            # until an explicit continue, which records the attempt (spec
+            # 013's hold, now used for every result the learner must see).
+            self.step = "reveal"
 
         return {"correct": correct, "accepted_expressions": item.accepted_expressions()}
 
@@ -257,6 +251,33 @@ class PracticeSession:
         self.all_items = items
         self.step = "choose" if self.all_items else "empty"
 
+    def end_session(self) -> None:
+        """Abandon the session mid-word and return to the collection-choice
+        screen (Broadsheet redesign's "End session"). The word in progress
+        is discarded unrecorded; words already finished stay recorded.
+        Only offered when a collection wasn't locked in at startup."""
+        if self.group_locked or self.step not in ("recall", "sentence", "feedback", "reveal"):
+            raise WrongStepError("no session to end")
+
+        self.pending_attempt = None
+        self.last_correction = None
+        items, warnings = load_vocabulary(self.vocab_dir)
+        self.warnings = warnings
+        self.all_items = items
+        self.step = "choose" if self.all_items else "empty"
+
+    def retry_sentence(self) -> None:
+        """Go back from "feedback" to "sentence" for the same word
+        (Broadsheet redesign's "Try another sentence"). The reviewed
+        sentence stays in the progress log; the next one is logged too."""
+        if self.step != "feedback":
+            raise WrongStepError("no sentence feedback to retry")
+
+        self.pending_attempt.pop("sentence", None)
+        self.pending_attempt.pop("feedback", None)
+        self.last_correction = None
+        self.step = "sentence"
+
     def continue_to_next(self) -> None:
         if self.step == "complete":
             return
@@ -287,6 +308,9 @@ class PracticeSession:
 
         item = self.current_item
         base["chinese"] = item.chinese
+        base["position"] = self.current_index + 1
+        base["total"] = len(self.items)
+        base["can_end_session"] = not self.group_locked
 
         if self.step in ("sentence", "feedback", "reveal"):
             base["accepted_expressions"] = item.accepted_expressions()

@@ -175,11 +175,12 @@ def test_get_state_recall_step_has_no_answer_or_correct_fields(tmp_path: Path):
 
 def test_get_state_sentence_step_includes_answer_and_correct(tmp_path: Path):
     client = _make_client(tmp_path)
-    client.post("/api/answer", json={"answer": "wrong"})
+    # Only a correct recall reaches the sentence step (Broadsheet redesign).
+    client.post("/api/answer", json={"answer": "receive"})
     data = client.get("/api/state").get_json()
     assert data["step"] == "sentence"
-    assert data["answer"] == "wrong"
-    assert data["correct"] is False
+    assert data["answer"] == "receive"
+    assert data["correct"] is True
 
 
 @patch("src.web.session_state.request_correction")
@@ -503,8 +504,11 @@ def test_post_select_recall_only_then_answer_skips_sentence_step(mock_request, t
     client.post("/api/select", json={"collection": "unit1", "mode": "recall-only"})
     resp = client.post("/api/answer", json={"answer": "receive"})
     assert resp.status_code == 200
+    # Broadsheet redesign: even a correct recall-only answer waits in
+    # "reveal" until the learner continues — but never visits "sentence".
+    assert client.get("/api/state").get_json()["step"] == "reveal"
 
-    state = client.get("/api/state").get_json()
+    state = client.post("/api/continue").get_json()
     assert state["step"] == "complete"
     assert state["total"] == 1
     assert state["correct"] == 1
@@ -592,4 +596,45 @@ def test_post_continue_rejected_from_recall_still_409_regardless_of_mode(tmp_pat
     )
     client.post("/api/select", json={"collection": "unit1", "mode": "recall-only"})
     resp = client.post("/api/continue")
+    assert resp.status_code == 409
+
+
+# --- Broadsheet redesign endpoints ---
+
+
+def test_post_end_returns_to_choose(tmp_path: Path):
+    client = _make_client(tmp_path, offer_choice=True)
+    client.post("/api/select", json={"collection": None})
+    client.post("/api/answer", json={"answer": "wrong"})
+
+    resp = client.post("/api/end")
+
+    assert resp.status_code == 200
+    assert resp.get_json()["step"] == "choose"
+
+
+def test_post_end_rejected_when_group_locked(tmp_path: Path):
+    client = _make_client(tmp_path)
+    resp = client.post("/api/end")
+    assert resp.status_code == 409
+
+
+@patch("src.web.session_state.request_correction")
+def test_post_retry_sentence_returns_to_sentence_step(mock_request, tmp_path: Path):
+    mock_request.return_value = CorrectionResult(
+        available=True, uses_expression=True, needs_correction=False, corrected="", explanation=""
+    )
+    client = _make_client(tmp_path)
+    client.post("/api/answer", json={"answer": "receive"})
+    client.post("/api/sentence", json={"sentence": "I receive mail."})
+
+    resp = client.post("/api/retry-sentence")
+
+    assert resp.status_code == 200
+    assert resp.get_json()["step"] == "sentence"
+
+
+def test_post_retry_sentence_rejected_outside_feedback(tmp_path: Path):
+    client = _make_client(tmp_path)
+    resp = client.post("/api/retry-sentence")
     assert resp.status_code == 409

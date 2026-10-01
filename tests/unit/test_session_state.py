@@ -3,6 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
+from src.services.llm_client import CorrectionResult
 from src.web.session_state import UNGROUPED_KEY, PracticeSession, WrongStepError
 
 
@@ -123,11 +124,11 @@ def test_state_omits_answer_and_correct_for_recall_empty_complete(tmp_path: Path
 def test_state_includes_answer_and_correct_for_sentence_step(tmp_path: Path):
     vocab_dir = _write_vocab(tmp_path)
     session = PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md")
-    session.submit_answer("wrong")
+    session.submit_answer("receive")
     state = session.state()
     assert state["step"] == "sentence"
-    assert state["answer"] == "wrong"
-    assert state["correct"] is False
+    assert state["answer"] == "receive"
+    assert state["correct"] is True
 
 
 def test_state_includes_answer_and_correct_for_feedback_step(tmp_path: Path):
@@ -185,8 +186,8 @@ def test_skip_sentence_updates_correct_count_from_recall_outcome_only(tmp_path: 
     session.skip_sentence()
     assert session.correct_count == 1
 
-    session.submit_answer("wrong")  # incorrect
-    session.skip_sentence()
+    session.submit_answer("wrong")  # incorrect: held in "reveal", no sentence step
+    session.continue_to_next()
     assert session.correct_count == 1  # unchanged
     assert session.step == "complete"
     state = session.state()
@@ -554,15 +555,17 @@ def test_select_collection_default_mode_sets_flag_false(tmp_path: Path):
 
 @patch("src.web.session_state.request_correction")
 def test_submit_answer_recall_only_correct_skips_sentence_step_and_advances(mock_request, tmp_path: Path):
-    """Regression guard (spec 013): a correct recall-only answer keeps
-    spec 012's exact behavior — immediate finalize, immediate advance,
-    never entering "reveal"."""
+    """A correct recall-only answer never visits "sentence" (spec 012).
+    Since the Broadsheet redesign it waits in "reveal" for the learner,
+    then finalizes and advances on continue."""
     vocab_dir = _write_vocab(tmp_path)  # "receive" then "give up"
     progress_file = tmp_path / "progress.md"
     session = PracticeSession(vocab_dir=vocab_dir, progress_file=progress_file, mode="recall-only")
 
     result = session.submit_answer("receive")
     assert result["correct"] is True
+    assert session.step == "reveal"
+    session.continue_to_next()
     assert session.step == "recall"
     assert session.current_index == 1
     assert session.correct_count == 1
@@ -658,6 +661,7 @@ def test_submit_answer_recall_only_writes_progress_without_sentence_or_feedback(
     session = PracticeSession(vocab_dir=vocab_dir, progress_file=progress_file, mode="recall-only")
 
     session.submit_answer("receive")
+    session.continue_to_next()
 
     text = progress_file.read_text(encoding="utf-8")
     assert "item: receive" in text
@@ -687,6 +691,138 @@ def test_select_collection_recall_only_then_submit_answer_skips_sentence(mock_re
     assert session.recall_only is True
 
     session.submit_answer("receive")
+    assert session.step == "reveal"
+    session.continue_to_next()
     assert session.step == "complete"
     mock_request.assert_not_called()
 
+
+
+# --- Broadsheet redesign: handoff recall flow, end session, retry sentence ---
+
+
+def test_sentence_mode_wrong_answer_holds_in_reveal_instead_of_sentence(tmp_path: Path):
+    """Handoff flow: only a correct recall earns the sentence step; a wrong
+    answer in sentence mode stops in "reveal" like recall-only does."""
+    vocab_dir = _write_vocab(tmp_path)
+    progress_file = tmp_path / "progress.md"
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=progress_file, mode="sentence")
+
+    result = session.submit_answer("wrong")
+
+    assert result["correct"] is False
+    assert session.step == "reveal"
+    assert not progress_file.exists()
+
+    session.continue_to_next()
+    assert session.step == "recall"
+    assert session.current_index == 1
+    text = progress_file.read_text(encoding="utf-8")
+    assert "answer: wrong" in text
+    assert "sentence:" not in text
+
+
+@patch("src.web.session_state.request_correction")
+def test_recall_only_correct_answer_waits_in_reveal_until_continue(mock_request, tmp_path: Path):
+    """Handoff flow: a correct recall-only answer shows its result and
+    waits for the learner instead of auto-advancing."""
+    vocab_dir = _write_vocab(tmp_path)
+    progress_file = tmp_path / "progress.md"
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=progress_file, mode="recall-only")
+
+    session.submit_answer("receive")
+    assert session.step == "reveal"
+    assert session.correct_count == 0
+    assert session.state()["correct"] is True
+
+    session.continue_to_next()
+    assert session.step == "recall"
+    assert session.correct_count == 1
+    assert "correct: true" in progress_file.read_text(encoding="utf-8")
+    mock_request.assert_not_called()
+
+
+def test_state_reports_position_and_total_during_a_word(tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md")
+
+    state = session.state()
+    assert state["position"] == 1
+    assert state["total"] == 2
+
+    session.submit_answer("wrong")
+    session.continue_to_next()
+    assert session.state()["position"] == 2
+
+
+def test_state_can_end_session_only_when_not_group_locked(tmp_path: Path):
+    vocab_dir = _write_multi_group_vocab(tmp_path)
+    interactive = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "p1.md", offer_choice=True
+    )
+    interactive.select_collection("unit1")
+    assert interactive.state()["can_end_session"] is True
+
+    locked = PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "p2.md", group="unit1")
+    assert locked.state()["can_end_session"] is False
+
+
+def test_end_session_mid_word_returns_to_choose_without_logging(tmp_path: Path):
+    vocab_dir = _write_multi_group_vocab(tmp_path)
+    progress_file = tmp_path / "progress.md"
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=progress_file, offer_choice=True)
+    session.select_collection(None)
+    session.submit_answer("wrong")
+    assert session.step == "reveal"
+
+    session.end_session()
+
+    assert session.step == "choose"
+    assert session.pending_attempt is None
+    assert not progress_file.exists()
+
+
+def test_end_session_rejected_when_group_locked_or_not_in_a_word(tmp_path: Path):
+    vocab_dir = _write_multi_group_vocab(tmp_path)
+    locked = PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "p1.md", group="unit1")
+    with pytest.raises(WrongStepError):
+        locked.end_session()
+
+    choosing = PracticeSession(
+        vocab_dir=vocab_dir, progress_file=tmp_path / "p2.md", offer_choice=True
+    )
+    with pytest.raises(WrongStepError):
+        choosing.end_session()
+
+
+def test_retry_sentence_returns_from_feedback_to_sentence_for_the_same_word(tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)
+    progress_file = tmp_path / "progress.md"
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=progress_file)
+    session.submit_answer("receive")
+    fake = lambda *a, **k: CorrectionResult(
+        available=True, uses_expression=True, needs_correction=False, corrected="", explanation=""
+    )
+    session.submit_sentence("I receive mail.", base_url="x", model="y", correction_fn=fake)
+    assert session.step == "feedback"
+
+    session.retry_sentence()
+
+    assert session.step == "sentence"
+    assert session.current_index == 0
+    assert "sentence" not in session.pending_attempt
+    assert "feedback" not in session.state()
+
+    session.submit_sentence("I received it.", base_url="x", model="y", correction_fn=fake)
+    session.continue_to_next()
+    assert session.correct_count == 1
+    text = progress_file.read_text(encoding="utf-8")
+    assert "sentence: I receive mail." in text
+    assert "sentence: I received it." in text
+
+
+def test_retry_sentence_rejected_outside_feedback(tmp_path: Path):
+    vocab_dir = _write_vocab(tmp_path)
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md")
+    with pytest.raises(WrongStepError):
+        session.retry_sentence()

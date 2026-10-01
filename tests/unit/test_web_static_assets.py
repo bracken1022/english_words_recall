@@ -38,27 +38,26 @@ def test_style_defines_feedback_color_classes():
 
 
 def test_app_js_uses_the_requested_feedback_wording():
+    """Broadsheet redesign: recall and review results are rubber stamps
+    whose wording carries the verdict as well as the color."""
     js = JS_PATH.read_text(encoding="utf-8")
-    assert "Correct:" in js
-    assert "Incorrect. The correct expression is:" in js
+    for label in ('"Correct"', '"Not quite"', '"Natural"', '"Small fix"'):
+        assert label in js, f"app.js missing stamp wording {label}"
 
 
-def test_feedback_correct_uses_green_not_red():
-    """Spec 008: a correct recall result must render in a distinct green,
-    while an incorrect one keeps today's red (no new .feedback-incorrect
-    color override should be needed at all)."""
+def test_feedback_correct_uses_cyan_and_incorrect_uses_magenta():
+    """Spec 008, restated for the Broadsheet ramps: a correct result is
+    cyan (accent) and never magenta; an incorrect one is magenta (accent-2)."""
     css = CSS_PATH.read_text(encoding="utf-8")
 
-    match = re.search(r"\.feedback-correct\s*{([^}]*)}", css)
-    assert match is not None, "style.css must define a plain .feedback-correct color rule"
-    rule_body = match.group(1)
-    assert "--green" in rule_body
-    assert "--red" not in rule_body
+    correct = re.search(r"\.feedback-correct\s*{([^}]*)}", css)
+    assert correct is not None, "style.css must define a .feedback-correct rule"
+    assert "--color-accent-700" in correct.group(1)
+    assert "--color-accent-2" not in correct.group(1)
 
-    assert re.search(r"\.feedback-incorrect\s*{([^}]*)}", css) is None, (
-        ".feedback-incorrect should need no color override — it already inherits "
-        "#word-feedback's base red"
-    )
+    incorrect = re.search(r"\.feedback-incorrect\s*{([^}]*)}", css)
+    assert incorrect is not None, "style.css must define a .feedback-incorrect rule"
+    assert "--color-accent-2-700" in incorrect.group(1)
 
 
 def test_style_defines_field_row_layout():
@@ -156,21 +155,14 @@ def test_app_js_tracks_mode_and_sends_it_with_select():
     assert "mode" in js[select_call_start:select_call_end]
 
 
-def test_app_js_reveals_word_feedback_in_recall_only_mode_before_advancing():
-    """Bugfix for spec 012 FR-003: recall-only mode's submit_answer()
-    advances straight past "sentence" to "recall"/"complete", so
-    renderWordFeedback() (which only shows the stamp for state.step ===
-    "sentence"/"feedback") never displays it. app.js's answer-submit
-    handler must render the stamp directly from POST /api/answer's own
-    response whenever the state that follows isn't "sentence"/"feedback",
-    holding it visible briefly before advancing."""
+def test_app_js_answer_handler_never_auto_advances():
+    """Broadsheet redesign: every recall result (correct or not, either
+    mode) waits for the learner's Enter / Continue. The answer handler
+    must not schedule a timed advance."""
     js = JS_PATH.read_text(encoding="utf-8")
-    assert "showWordFeedback" in js
-    assert "setTimeout" in js
     answer_handler_start = js.index('answerForm.addEventListener("submit"')
-    answer_handler_end = js.index("});", js.index("renderState(state);", answer_handler_start))
-    handler_body = js[answer_handler_start:answer_handler_end]
-    assert "showWordFeedback(result.correct, result.accepted_expressions)" in handler_body
+    answer_handler_end = js.index("\n  });", answer_handler_start)
+    assert "setTimeout" not in js[answer_handler_start:answer_handler_end]
 
 
 def test_choose_view_offers_a_mode_toggle():
@@ -200,17 +192,6 @@ def test_continue_button_exists_outside_step_sections():
         )
 
 
-def test_app_js_wrong_recall_only_answer_never_auto_advances():
-    """Spec 013: a wrong recall-only answer (state.step === "reveal")
-    must not schedule the setTimeout-based auto-advance used for a
-    correct one."""
-    js = JS_PATH.read_text(encoding="utf-8")
-    reveal_check_pos = js.index('state.step === "reveal"')
-    reveal_branch_end = js.index("}", js.index("renderState(state);", reveal_check_pos))
-    reveal_branch_body = js[reveal_check_pos:reveal_branch_end]
-    assert "setTimeout" not in reveal_branch_body
-
-
 def test_spinner_uses_hidden_attribute_not_a_separate_mechanism():
     """Regression guard (spec 005, User Story 2): confirms the spinner is
     actually covered by the [hidden] override above, rather than using
@@ -222,3 +203,66 @@ def test_spinner_uses_hidden_attribute_not_a_separate_mechanism():
     spinner_tag = html[tag_open:tag_close]
     assert "hidden" in spinner_tag.split(), "the spinner element must use the plain `hidden` attribute"
     assert "style=" not in spinner_tag, "the spinner must not hide itself via an inline style"
+
+
+# --- Broadsheet redesign (design_handoff_english_tutor) ---
+
+
+def test_style_carries_broadsheet_tokens():
+    css = CSS_PATH.read_text(encoding="utf-8")
+    for token in (
+        "--color-bg: #f3f2f2",
+        "--color-text: #201e1d",
+        "--color-accent: #0088b0",
+        "--color-accent-2: #d6006c",
+        '"Source Serif 4"',
+    ):
+        assert token in css, f"style.css missing Broadsheet token {token}"
+
+
+def test_template_loads_fonts_and_icons_with_fallbacks():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    assert "fonts.googleapis.com" in html and "Noto+Serif+SC" in html
+    assert "@phosphor-icons/web@2.1.1" in html
+    css = CSS_PATH.read_text(encoding="utf-8")
+    assert "Songti SC" in css, "Chinese text needs a local serif fallback when offline"
+
+
+def test_session_controls_are_wired_to_their_endpoints():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    js = JS_PATH.read_text(encoding="utf-8")
+    for element_id, endpoint in (
+        ("end-session-button", "/api/end"),
+        ("retry-sentence-button", "/api/retry-sentence"),
+        ("skip-button", "/api/skip"),
+    ):
+        assert f'id="{element_id}"' in html
+        assert endpoint in js
+
+
+def test_show_answer_submits_a_blank_answer():
+    """"Show answer" counts as wrong: it goes through the same /api/answer
+    grading as a typed guess (a blank answer is graded incorrect)."""
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert 'id="show-answer-button"' in html
+    handler = js[js.index("showAnswerButton.addEventListener") :]
+    handler = handler[: handler.index("\n  });")]
+    assert "submitAnswer(\"\")" in handler
+
+
+def test_review_shortcut_accepts_cmd_or_ctrl_enter():
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert "metaKey" in js and "ctrlKey" in js
+
+
+def test_check_and_review_buttons_disable_when_empty():
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert "answerSubmitButton.disabled" in js
+    assert "sentenceSubmitButton.disabled" in js
+
+
+def test_narrow_layout_keeps_touch_targets_at_least_44px():
+    css = CSS_PATH.read_text(encoding="utf-8")
+    narrow = css[css.index("@media (max-width: 600px)") :]
+    assert "min-height: 44px" in narrow

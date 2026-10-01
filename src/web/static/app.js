@@ -8,30 +8,96 @@
     complete: document.getElementById("complete-view"),
   };
   const chooseListEl = document.getElementById("choose-list");
+  const modeHintEl = document.getElementById("mode-hint");
   const warningsEl = document.getElementById("warnings");
+  const endSessionButton = document.getElementById("end-session-button");
   const chineseEl = document.getElementById("chinese");
-  const targetExpressionEl = document.getElementById("target-expression");
-  const wordFeedbackEl = document.getElementById("word-feedback");
   const answerForm = document.getElementById("answer-form");
   const answerInput = document.getElementById("answer-input");
   const answerSubmitButton = answerForm.querySelector("button[type=submit]");
+  const recallHintsEl = document.getElementById("recall-hints");
+  const showAnswerButton = document.getElementById("show-answer-button");
+  const wordFeedbackEl = document.getElementById("word-feedback");
+  const targetExpressionEl = document.getElementById("target-expression");
+  const targetMeaningEl = document.getElementById("target-meaning");
   const sentenceForm = document.getElementById("sentence-form");
   const sentenceInput = document.getElementById("sentence-input");
   const sentenceSubmitButton = sentenceForm.querySelector("button[type=submit]");
+  const skipButton = document.getElementById("skip-button");
+  const modKeyEl = document.getElementById("mod-key");
+  const recordingStatusEl = document.getElementById("recording-status");
+  const recordingTimeEl = document.getElementById("recording-time");
   const spinnerEl = document.getElementById("spinner");
   const feedbackResultEl = document.getElementById("feedback-result");
+  const stepActionsEl = document.getElementById("step-actions");
   const continueButton = document.getElementById("continue-button");
+  const retrySentenceButton = document.getElementById("retry-sentence-button");
   const sessionTallyEl = document.getElementById("session-tally");
+  const scoreEl = document.querySelector("#complete-view .score");
   const restartButton = document.getElementById("restart-button");
   const micButton = document.getElementById("mic-button");
+  const micLabelEl = micButton.querySelector(".mic-label");
+  const micIconEl = micButton.querySelector("i");
   const transcribingEl = document.getElementById("transcribing");
 
-  let lastAcceptedExpressions = [];
-  const RECALL_ONLY_FEEDBACK_DELAY_MS = 1200;
+  const MODE_HINTS = {
+    sentence: "Recall the word, then write or say a sentence with it.",
+    "recall-only": "Recall the word only. Faster rounds.",
+  };
+
+  let currentState = null;
+  // Sentence mode, correct answer: the server is already at "sentence",
+  // but the learner first sees the recall result and presses "Use it in a
+  // sentence →". Purely presentational, so it lives only here.
+  let sentenceIntro = false;
+  let busy = false;
+
+  modKeyEl.textContent = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
+
+  // --- small DOM helpers ---------------------------------------------------
+
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined) node.textContent = text;
+    return node;
+  }
+
+  function icon(name) {
+    const node = el("i", `ph-duotone ph-${name}`);
+    node.setAttribute("aria-hidden", "true");
+    return node;
+  }
+
+  function stamp(kind, iconName, label, word, small) {
+    const node = el("div", `stamp feedback-${kind}${small ? " stamp--small" : ""}`);
+    node.append(icon(iconName), el("span", "stamp-label", label));
+    if (word) node.append(el("span", "stamp-word", word));
+    return node;
+  }
+
+  function splitMeanings(chinese) {
+    return (chinese || "").split(/[；;]/).map((part) => part.trim()).filter(Boolean);
+  }
+
+  function norm(text) {
+    return (text || "").toLowerCase().replace(/[^a-z0-9' ]/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  async function postJson(url, body) {
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    return resp;
+  }
+
+  // --- rendering -----------------------------------------------------------
 
   function showOnly(step) {
-    for (const [name, el] of Object.entries(views)) {
-      el.hidden = name !== step;
+    for (const [name, view] of Object.entries(views)) {
+      view.hidden = name !== step;
     }
   }
 
@@ -44,59 +110,257 @@
     }
   }
 
-  function showWordFeedback(correct, acceptedExpressions) {
-    const expressions = (acceptedExpressions || []).join(", ");
-    wordFeedbackEl.textContent = correct
-      ? `Correct: ${expressions}`
-      : `Incorrect. The correct expression is: ${expressions}`;
-    wordFeedbackEl.classList.toggle("feedback-correct", correct === true);
-    wordFeedbackEl.classList.toggle("feedback-incorrect", correct === false);
-    wordFeedbackEl.hidden = false;
-  }
-
-  function renderWordFeedback(state) {
-    // Persistent element, independent of showOnly(): visible whenever the
-    // learner's recall outcome is still the relevant context (spec 004
-    // FR-002/FR-003 — shown together with the sentence step and carried
-    // into the feedback step; spec 013 also carries it into the new
-    // "reveal" step, not tied to whichever <section> is primary).
-    if (state.step === "sentence" || state.step === "feedback" || state.step === "reveal") {
-      showWordFeedback(state.correct, state.accepted_expressions);
-    } else {
-      wordFeedbackEl.hidden = true;
-    }
-  }
-
-  function renderContinueButton(state) {
-    // Persistent element (spec 013), like #word-feedback: reused for both
-    // "feedback" (sentence mode) and "reveal" (recall-only wrong answer)
-    // rather than duplicated per step.
-    continueButton.hidden = !(state.step === "feedback" || state.step === "reveal");
+  function setActions({ continueLabel = null, retry = false } = {}) {
+    continueButton.hidden = continueLabel === null;
+    if (continueLabel !== null) continueButton.textContent = continueLabel;
+    retrySentenceButton.hidden = !retry;
+    stepActionsEl.hidden = continueLabel === null && !retry;
   }
 
   function renderState(state) {
+    currentState = state;
+    if (state.step !== "sentence") sentenceIntro = false;
+
     showWarnings(state.warnings);
-    showOnly(state.step);
-    renderWordFeedback(state);
-    renderContinueButton(state);
+    endSessionButton.hidden = !state.can_end_session;
+    wordFeedbackEl.hidden = true;
+    setActions();
+    if (state.step !== "sentence") stopRecording(true);
 
     if (state.step === "recall") {
-      chineseEl.textContent = state.chinese;
-      answerInput.value = "";
+      showOnly("recall");
+      renderRecall(state);
+      answerInput.focus();
+    } else if (state.step === "reveal" || (state.step === "sentence" && sentenceIntro)) {
+      showOnly("recall");
+      renderRecallResult(state);
+      continueButton.focus();
     } else if (state.step === "sentence") {
-      lastAcceptedExpressions = state.accepted_expressions || [];
-      targetExpressionEl.textContent = lastAcceptedExpressions[0] || "";
-      sentenceInput.value = "";
-      spinnerEl.hidden = true;
-      micButton.hidden = !state.voice_available;
+      showOnly("sentence");
+      renderSentence(state);
+      sentenceInput.focus();
     } else if (state.step === "feedback") {
-      renderFeedback(state.feedback);
+      showOnly("feedback");
+      renderFeedback(state);
+      setActions({ continueLabel: "Continue", retry: true });
+      continueButton.focus();
     } else if (state.step === "complete") {
-      renderTally(state.total, state.correct);
-      restartButton.hidden = !state.can_restart;
+      showOnly("complete");
+      renderComplete(state);
     } else if (state.step === "choose") {
+      showOnly("choose");
       renderChoose(state.collections);
+    } else {
+      showOnly(state.step);
     }
+  }
+
+  function renderMeanings(chinese) {
+    chineseEl.replaceChildren();
+    splitMeanings(chinese).forEach((meaning, index) => {
+      if (index > 0) {
+        const sep = el("span", "meaning-sep", "/");
+        sep.setAttribute("aria-hidden", "true");
+        chineseEl.append(sep);
+      }
+      chineseEl.append(el("span", "meaning", meaning));
+    });
+  }
+
+  function renderRecall(state) {
+    renderMeanings(state.chinese);
+    answerInput.value = "";
+    answerInput.readOnly = false;
+    delete answerInput.dataset.result;
+    answerSubmitButton.hidden = false;
+    answerSubmitButton.disabled = true;
+    recallHintsEl.hidden = false;
+  }
+
+  function renderRecallResult(state) {
+    const accepted = state.accepted_expressions || [];
+    const answer = state.answer || "";
+    renderMeanings(state.chinese);
+    answerInput.value = answer;
+    answerInput.readOnly = true;
+    answerInput.dataset.result = state.correct ? "correct" : "wrong";
+    answerSubmitButton.hidden = true;
+    recallHintsEl.hidden = true;
+
+    wordFeedbackEl.replaceChildren();
+    if (state.correct) {
+      const matched =
+        accepted.find((expr) => expr.trim().toLowerCase() === answer.trim().toLowerCase()) ||
+        accepted[0];
+      wordFeedbackEl.append(stamp("correct", "check-circle", "Correct", matched));
+    } else {
+      wordFeedbackEl.append(stamp("incorrect", "x-circle", "Not quite"));
+      const reveal = el("div", "answer-reveal");
+      reveal.append(el("p", "label", "Answer"), el("span", "answer-text", accepted.join(", ")));
+      if (answer.trim()) {
+        const wrote = el("span", "you-wrote", "You wrote ");
+        wrote.append(el("span", "struck", answer));
+        reveal.append(wrote);
+      }
+      wordFeedbackEl.append(reveal);
+    }
+    wordFeedbackEl.hidden = false;
+
+    let label;
+    if (state.step === "sentence") label = "Use it in a sentence →";
+    else if (state.position === state.total) label = "Finish";
+    else label = "Next word →";
+    setActions({ continueLabel: label });
+  }
+
+  function renderSentence(state) {
+    const accepted = state.accepted_expressions || [];
+    targetExpressionEl.textContent = accepted[0] || "";
+    targetMeaningEl.textContent = splitMeanings(state.chinese).join(" · ");
+    sentenceInput.value = "";
+    sentenceInput.disabled = false;
+    spinnerEl.hidden = true;
+    transcribingEl.hidden = true;
+    micButton.hidden = !state.voice_available;
+    updateReviewButton();
+  }
+
+  // Word-level LCS between the learner's sentence and the correction: the
+  // original's unmatched tokens were removed, the correction's were added.
+  function diffTokens(original, corrected) {
+    const a = original.split(/\s+/).filter(Boolean);
+    const b = corrected.split(/\s+/).filter(Boolean);
+    const key = (token) => token.toLowerCase().replace(/[^a-z0-9']/g, "");
+    const dp = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
+    for (let i = a.length - 1; i >= 0; i--) {
+      for (let j = b.length - 1; j >= 0; j--) {
+        dp[i][j] = key(a[i]) === key(b[j]) ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
+      }
+    }
+    const removed = new Set();
+    const added = new Set();
+    let i = 0;
+    let j = 0;
+    while (i < a.length && j < b.length) {
+      if (key(a[i]) === key(b[j])) {
+        i++;
+        j++;
+      } else if (dp[i + 1][j] >= dp[i][j + 1]) {
+        removed.add(i++);
+      } else {
+        added.add(j++);
+      }
+    }
+    while (i < a.length) removed.add(i++);
+    while (j < b.length) added.add(j++);
+    return {
+      original: a.map((text, index) => ({ text, marked: removed.has(index) })),
+      corrected: b.map((text, index) => ({ text, marked: added.has(index) })),
+    };
+  }
+
+  function tokenParagraph(className, tokens, markedClass) {
+    const p = el("p", className);
+    tokens.forEach((token, index) => {
+      if (index > 0) p.append(" ");
+      p.append(token.marked ? el("span", markedClass, token.text) : token.text);
+    });
+    return p;
+  }
+
+  // One note per point: numbered lists ("…two issues: 1) … 2) …") split on
+  // their numbers, dropping a colon-ended lead-in; prose splits by sentence.
+  function splitNotes(explanation) {
+    const text = (explanation || "").trim();
+    if (!text) return [];
+    const parts = text.split(/(?:^|\s)\(?\d{1,2}[).]\s+/);
+    if (parts.length > 2) {
+      const [intro, ...items] = parts.map((part) => part.trim());
+      const notes = items.map((item) => item.replace(/[;,]$/, "")).filter(Boolean);
+      if (intro && !intro.endsWith(":")) notes.unshift(intro);
+      return notes;
+    }
+    return text
+      .split(/(?<=[.!?。])\s+/)
+      .map((note) => note.trim())
+      .filter(Boolean);
+  }
+
+  function block(labelText, labelClass) {
+    const section = el("div", "feedback-block");
+    section.append(el("p", `label${labelClass ? ` ${labelClass}` : ""}`, labelText));
+    return section;
+  }
+
+  function renderFeedback(state) {
+    const feedback = state.feedback;
+    const original = state.sentence || "";
+    const word = (state.accepted_expressions || [])[0] || "";
+    feedbackResultEl.replaceChildren();
+
+    const head = el("div", "feedback-head");
+    head.append(el("h2", null, word));
+    feedbackResultEl.append(head);
+
+    let kind;
+    if (!feedback.available) kind = "unavailable";
+    else if (feedback.uses_expression === false) kind = "missing";
+    else if (
+      feedback.needs_correction &&
+      feedback.corrected &&
+      norm(feedback.corrected) !== norm(original)
+    )
+      kind = "fix";
+    else kind = "natural";
+    feedbackResultEl.dataset.state = kind;
+
+    const notes = splitNotes(feedback.explanation);
+    if (kind === "natural") {
+      head.append(stamp("correct", "check-circle", "Natural", null, true));
+    } else if (kind === "fix") {
+      head.append(stamp("incorrect", "pencil-simple-line", "Small fix", null, true));
+    } else if (kind === "missing") {
+      head.append(stamp("incorrect", "x-circle", "Word missing", null, true));
+      notes.unshift(`Your sentence doesn't use “${word}”.`);
+    }
+
+    const wrote = block("You wrote");
+    if (kind === "fix") {
+      const diff = diffTokens(original, feedback.corrected);
+      wrote.append(tokenParagraph("original-sentence", diff.original, "token-removed"));
+      feedbackResultEl.append(wrote);
+      const better = block("More natural", "label--accent");
+      better.append(tokenParagraph("corrected-sentence", diff.corrected, "token-added"));
+      feedbackResultEl.append(better);
+    } else {
+      wrote.append(el("p", "original-sentence", original));
+      feedbackResultEl.append(wrote);
+    }
+
+    if (kind === "unavailable") {
+      const why = block("Review");
+      why.append(el("p", "note-text", "Sorry, sentence correction is unavailable right now."));
+      feedbackResultEl.append(why);
+    } else if (notes.length > 0) {
+      const why = block("Why");
+      why.classList.add("notes");
+      for (const note of notes) {
+        const p = el("p", "note");
+        const dash = el("span", "note-dash", "—");
+        dash.setAttribute("aria-hidden", "true");
+        p.append(dash, el("span", null, note));
+        why.append(p);
+      }
+      feedbackResultEl.append(why);
+    }
+  }
+
+  function renderComplete(state) {
+    const score = `${state.correct}/${state.total}`;
+    for (const span of scoreEl.children) span.textContent = score;
+    sessionTallyEl.textContent = `${state.correct} of ${state.total} recalled correctly.`;
+    restartButton.hidden = !state.can_restart;
+    if (state.can_restart) restartButton.focus();
   }
 
   function getSelectedOrder() {
@@ -109,12 +373,31 @@
     return checked ? checked.value : "sentence";
   }
 
+  function wordCount(count) {
+    return `${count} ${count === 1 ? "word" : "words"}`;
+  }
+
   function renderChoose(collections) {
-    chooseListEl.innerHTML = "";
+    chooseListEl.replaceChildren();
     for (const entry of collections) {
-      const button = document.createElement("button");
+      let button;
+      if (entry.key === null) {
+        const wrap = el("div", "choose-all");
+        button = el("button", "btn btn-primary");
+        button.append(entry.label, el("span", "count", ` · ${wordCount(entry.count)}`));
+        wrap.append(button);
+        chooseListEl.append(wrap);
+      } else {
+        const short = entry.label.replace(/-words$/, "");
+        button = el("button", "set-button");
+        button.setAttribute("aria-label", `${entry.label}, ${wordCount(entry.count)}`);
+        button.append(
+          el("span", `set-key${short.length > 3 ? " set-key--long" : ""}`, short),
+          el("span", "set-count", wordCount(entry.count)),
+        );
+        chooseListEl.append(button);
+      }
       button.type = "button";
-      button.textContent = `${entry.label} (${entry.count})`;
       button.addEventListener("click", async () => {
         await fetch("/api/select", {
           method: "POST",
@@ -127,39 +410,7 @@
         });
         await fetchState();
       });
-      chooseListEl.appendChild(button);
     }
-  }
-
-  function renderTally(total, correct) {
-    const mistakes = total - correct;
-    sessionTallyEl.textContent =
-      mistakes === 0
-        ? `You recalled all ${total} words correctly.`
-        : `You recalled ${correct} of ${total} words correctly — ${mistakes} to review.`;
-  }
-
-  function renderFeedback(feedback) {
-    let text;
-    let state;
-    if (!feedback.available) {
-      text = "Sorry, sentence correction is unavailable right now.";
-      state = "unavailable";
-    } else if (feedback.uses_expression === false) {
-      text = "Your sentence does not use the target expression.";
-      state = "missing";
-    } else if (feedback.needs_correction) {
-      text = `Corrected: ${feedback.corrected}`;
-      if (feedback.explanation) {
-        text += ` — ${feedback.explanation}`;
-      }
-      state = "corrected";
-    } else {
-      text = "Your sentence is already correct and natural.";
-      state = "clean";
-    }
-    feedbackResultEl.textContent = text;
-    feedbackResultEl.dataset.state = state;
   }
 
   async function fetchState() {
@@ -167,44 +418,106 @@
     renderState(await resp.json());
   }
 
+  // --- actions -------------------------------------------------------------
+
+  async function submitAnswer(answer) {
+    if (busy) return;
+    busy = true;
+    try {
+      await postJson("/api/answer", { answer });
+      const resp = await fetch("/api/state");
+      const state = await resp.json();
+      sentenceIntro = state.step === "sentence";
+      renderState(state);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function continueStep() {
+    if (busy || continueButton.hidden) return;
+    if (sentenceIntro && currentState && currentState.step === "sentence") {
+      sentenceIntro = false;
+      renderState(currentState);
+      return;
+    }
+    busy = true;
+    try {
+      const resp = await postJson("/api/continue");
+      renderState(await resp.json());
+    } finally {
+      busy = false;
+    }
+  }
+
+  // Every recall result waits for the learner (no timed advance): the
+  // result and its Continue button stay until Enter or a click.
   answerForm.addEventListener("submit", async (event) => {
     event.preventDefault();
-    const resp = await fetch("/api/answer", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ answer: answerInput.value }),
+    if (answerInput.readOnly) {
+      await continueStep();
+      return;
+    }
+    if (answerInput.value.trim() === "") return;
+    await submitAnswer(answerInput.value);
+  });
+
+  answerInput.addEventListener("input", () => {
+    answerSubmitButton.disabled = answerInput.value.trim() === "";
+  });
+
+  // "Show answer" counts as wrong: a blank answer is graded incorrect.
+  showAnswerButton.addEventListener("click", async () => {
+    await submitAnswer("");
+  });
+
+  continueButton.addEventListener("click", continueStep);
+
+  retrySentenceButton.addEventListener("click", async () => {
+    const resp = await postJson("/api/retry-sentence");
+    renderState(await resp.json());
+  });
+
+  endSessionButton.addEventListener("click", async () => {
+    stopRecording(true);
+    const resp = await postJson("/api/end");
+    if (resp.ok) renderState(await resp.json());
+  });
+
+  restartButton.addEventListener("click", async () => {
+    const resp = await postJson("/api/restart");
+    renderState(await resp.json());
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" || event.metaKey || event.ctrlKey || event.altKey) return;
+    const tag = event.target.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "BUTTON") return;
+    if (!continueButton.hidden) {
+      event.preventDefault();
+      continueStep();
+    }
+  });
+
+  for (const radio of document.querySelectorAll('input[name="mode-choice"]')) {
+    radio.addEventListener("change", () => {
+      modeHintEl.textContent = MODE_HINTS[getSelectedMode()];
     });
-    const result = await resp.json();
-    const stateResp = await fetch("/api/state");
-    const state = await stateResp.json();
+  }
 
-    if (state.step === "sentence" || state.step === "feedback") {
-      // Sentence mode: the "sentence" step itself carries the word-feedback
-      // stamp (spec 004) — render immediately, no separate reveal needed.
-      renderState(state);
-      return;
+  // --- sentence step -------------------------------------------------------
+
+  function updateReviewButton() {
+    sentenceSubmitButton.disabled = sentenceInput.value.trim() === "" || !spinnerEl.hidden;
+  }
+
+  sentenceInput.addEventListener("input", updateReviewButton);
+
+  sentenceInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      sentenceForm.requestSubmit();
     }
-
-    if (state.step === "reveal") {
-      // Recall-only, incorrect (spec 013): the session waits indefinitely
-      // here — no timer, no auto-advance. The persistent Continue button
-      // (renderContinueButton) is now visible and awaits a click.
-      renderState(state);
-      return;
-    }
-
-    // Recall-only mode (spec 012 FR-003): submit_answer() advances straight
-    // past "sentence" to "recall"/"complete", so there is no step left to
-    // carry the correct/incorrect reveal. Show it directly from this
-    // response and hold it briefly before moving on, so the learner still
-    // sees whether they were right (acceptance scenario 2).
-    showWordFeedback(result.correct, result.accepted_expressions);
-    answerInput.disabled = true;
-    answerSubmitButton.disabled = true;
-    await new Promise((resolve) => setTimeout(resolve, RECALL_ONLY_FEEDBACK_DELAY_MS));
-    answerInput.disabled = false;
-    answerSubmitButton.disabled = false;
-    renderState(state);
   });
 
   sentenceForm.addEventListener("submit", async (event) => {
@@ -219,32 +532,26 @@
       await fetchState();
       return;
     }
+    if (!spinnerEl.hidden) return;
 
+    stopRecording(true);
     spinnerEl.hidden = false;
     sentenceInput.disabled = true;
     sentenceSubmitButton.disabled = true;
     try {
-      const resp = await fetch("/api/sentence", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sentence: sentenceInput.value }),
-      });
+      const resp = await postJson("/api/sentence", { sentence: sentenceInput.value });
       await resp.json();
     } finally {
       spinnerEl.hidden = true;
       sentenceInput.disabled = false;
-      sentenceSubmitButton.disabled = false;
+      updateReviewButton();
     }
     await fetchState();
   });
 
-  continueButton.addEventListener("click", async () => {
-    const resp = await fetch("/api/continue", { method: "POST" });
-    renderState(await resp.json());
-  });
-
-  restartButton.addEventListener("click", async () => {
-    const resp = await fetch("/api/restart", { method: "POST" });
+  skipButton.addEventListener("click", async () => {
+    stopRecording(true);
+    const resp = await postJson("/api/skip");
     renderState(await resp.json());
   });
 
@@ -253,10 +560,35 @@
   // typed sentence uses — never auto-submitted (FR-002).
   let mediaRecorder = null;
   let audioChunks = [];
+  let recordingTimer = null;
+  let discardRecording = false;
+
+  function setRecordingUi(recording) {
+    micLabelEl.textContent = recording ? "Stop" : "Speak instead";
+    micIconEl.className = `ph-duotone ${recording ? "ph-stop-circle" : "ph-microphone"}`;
+    sentenceInput.classList.toggle("is-recording", recording);
+    recordingStatusEl.hidden = !recording;
+    clearInterval(recordingTimer);
+    if (recording) {
+      const startedAt = Date.now();
+      recordingTimeEl.textContent = "0:00";
+      recordingTimer = setInterval(() => {
+        const secs = Math.floor((Date.now() - startedAt) / 1000);
+        recordingTimeEl.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
+      }, 1000);
+    }
+  }
+
+  function stopRecording(discard) {
+    if (mediaRecorder && mediaRecorder.state === "recording") {
+      discardRecording = discard;
+      mediaRecorder.stop();
+    }
+  }
 
   micButton.addEventListener("click", async () => {
     if (mediaRecorder && mediaRecorder.state === "recording") {
-      mediaRecorder.stop();
+      stopRecording(false);
       return;
     }
 
@@ -276,6 +608,7 @@
       const mimeType = preferredTypes.find((type) => MediaRecorder.isTypeSupported(type));
       mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
       audioChunks = [];
+      discardRecording = false;
 
       mediaRecorder.addEventListener("dataavailable", (event) => {
         if (event.data.size > 0) {
@@ -285,8 +618,8 @@
 
       mediaRecorder.addEventListener("stop", async () => {
         stream.getTracks().forEach((track) => track.stop());
-        micButton.textContent = "Speak instead";
-        micButton.classList.remove("recording");
+        setRecordingUi(false);
+        if (discardRecording) return;
         const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
         transcribingEl.hidden = false;
         try {
@@ -298,6 +631,7 @@
           const data = await resp.json();
           if (data.available) {
             sentenceInput.value = data.text;
+            updateReviewButton();
           }
         } finally {
           transcribingEl.hidden = true;
@@ -305,8 +639,7 @@
       });
 
       mediaRecorder.start();
-      micButton.textContent = "Stop";
-      micButton.classList.add("recording");
+      setRecordingUi(true);
     } catch {
       // Microphone permission denied, no device, or an insecure context —
       // fall back to typing only (FR-004).

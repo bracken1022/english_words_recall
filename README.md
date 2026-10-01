@@ -126,20 +126,28 @@ listing the collections found in your vocabulary folder (grouped by each
 item's `group` tag, plus "Practice everything" and, if any items have no
 tag, "Ungrouped words"), alongside toggles for **Order** (Sequential /
 Random) and **Mode** (Sentence / Recall only) — pick your settings and a
-collection to start. Finishing a session shows how many you recalled
-correctly and offers a "Practice again" button that returns to that same
-screen (re-reading the vocabulary folder, so files you've added or changed
+collection to start. Finishing a session shows your score and offers a
+"Back to word sets" button that returns to that same screen (re-reading the vocabulary folder, so files you've added or changed
 in the meantime show up, and letting you pick fresh settings for the next
 pass), all without restarting the server. Passing `--group` skips this
 screen entirely and behaves as before: it goes straight into practicing
 just that group, with no way to switch collections without restarting.
 
-While writing a sentence, submitting it empty asks you to confirm skipping
-that word rather than sending nothing off for review. In **recall-only**
-mode (see above) there's no sentence step at all: a correct answer moves
-on right away; a wrong one shows the correct expression and a "Continue"
-button that waits for you to click it, so you can study the word for as
-long as you want instead of racing a timer.
+After you check a word, the web UI shows the result and waits for you
+(Enter or the button) before moving on, so you can study it for as long as
+you want. A wrong answer, or "Show answer", shows every accepted expression
+and goes on to the next word; only a correct answer in **Sentence** mode
+leads to the sentence step. There you can type or speak a sentence, review
+it (Cmd/Ctrl+Enter), skip it, or after the review choose "Try another
+sentence" to write a new one for the same word (each reviewed sentence is
+logged). Submitting an empty sentence asks you to confirm skipping the
+word. "End session" in the header returns to the word sets mid-session;
+the word in progress is not logged. In **recall-only** mode (see above)
+there's no sentence step at all.
+
+The web UI loads its fonts (Source Serif 4, Noto Serif SC) and icons
+(Phosphor) from Google Fonts and unpkg. Offline, it falls back to local
+serif fonts and the icons are simply omitted.
 
 The web UI and the command-line tool can be run at the same time and are
 just two ways to reach the same tutor — running one doesn't require

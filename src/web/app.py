@@ -106,6 +106,22 @@ def create_app(
             return jsonify({"error": str(exc)}), 409
         return jsonify(session.state())
 
+    @app.post("/api/end")
+    def post_end():
+        try:
+            session.end_session()
+        except WrongStepError as exc:
+            return jsonify({"error": str(exc)}), 409
+        return jsonify(session.state())
+
+    @app.post("/api/retry-sentence")
+    def post_retry_sentence():
+        try:
+            session.retry_sentence()
+        except WrongStepError as exc:
+            return jsonify({"error": str(exc)}), 409
+        return jsonify(session.state())
+
     @app.post("/api/continue")
     def post_continue():
         try:
