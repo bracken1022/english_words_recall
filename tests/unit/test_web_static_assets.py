@@ -266,3 +266,48 @@ def test_narrow_layout_keeps_touch_targets_at_least_44px():
     css = CSS_PATH.read_text(encoding="utf-8")
     narrow = css[css.index("@media (max-width: 600px)") :]
     assert "min-height: 44px" in narrow
+
+
+# --- spec 015: login screen and account header -----------------------------
+
+
+def test_login_view_has_labelled_fields_submit_and_error_region():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    start, end = _section_bounds(html, "login-view")
+    section = html[start:end]
+    assert 'class="screen"' in section
+    assert re.search(r'id="login-username"[^>]*autocomplete="username"', section)
+    assert re.search(r'id="login-password"[^>]*type="password"', section) or re.search(
+        r'type="password"[^>]*id="login-password"', section
+    )
+    assert 'autocomplete="current-password"' in section
+    assert '<label for="login-username"' in section
+    assert '<label for="login-password"' in section
+    assert re.search(r'<button type="submit"[^>]*>Log in</button>', section)
+    assert re.search(r'id="login-error"[^>]*role="alert"', section)
+
+
+def test_header_has_account_name_and_logout_button():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    header = html[html.index("<header") : html.index("</header>")]
+    assert 'id="account-name"' in header
+    assert 'id="logout-button"' in header
+
+
+def test_app_js_handles_login_and_unauthorized():
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert "401" in js
+    assert "/api/login" in js
+    assert "login-view" in js
+    assert "Username or password is incorrect" in js
+    assert "Enter both a username and a password" in js
+    assert "localStorage" not in js
+
+
+def test_app_js_logout_button_posts_logout_and_shows_login():
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert "/api/logout" in js
+    handler_start = js.index("logoutButton.addEventListener")
+    handler = js[handler_start : js.index("\n  });", handler_start)]
+    assert '"/api/logout"' in handler
+    assert "showLogin()" in handler

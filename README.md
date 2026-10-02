@@ -1,6 +1,6 @@
 # English Tutor
 
-A local, single-learner CLI and web tool that drills English vocabulary for
+A local CLI and web tool that drills English vocabulary for
 Chinese speakers: it shows a Chinese meaning, has you recall the English
 expression, has you write an original sentence with it (typed, or — in the
 web UI — spoken and transcribed locally), and sends that sentence to a
@@ -9,7 +9,10 @@ grammar/naturalness correction via Ollama's HTTP API — the app never spawns
 the `ollama` CLI. All vocabulary content and practice history are plain
 Markdown files on disk — there is no database. Ollama only ever evaluates
 language quality; it never controls grading or lesson progression, which are
-fully deterministic regardless of what (or whether) Ollama returns.
+fully deterministic regardless of what (or whether) Ollama returns. The
+command line is a single-learner tool; the web UI supports several learners
+on one machine, each logging in to their own account with their own
+practice history (see [Accounts](#accounts-web-ui)).
 
 ## Setup
 
@@ -51,7 +54,8 @@ group: unit1
 - `english` and `chinese` are required; `alternates` and `group` are optional.
 - Add or edit items by hand-editing these files — no rebuild step needed.
 
-> **Caution**: keep `--progress-file` *outside* `--vocab-dir`. The loader reads
+> **Caution**: keep `--progress-file` (and the web UI's per-account
+> `progress-<username>.md` files, which sit next to it) *outside* `--vocab-dir`. The loader reads
 > every `.md` file in the vocabulary directory as vocabulary content, so a
 > progress log placed inside it will be (harmlessly, but noisily) treated as
 > a malformed vocabulary file. The defaults (`./vocabulary/` vs
@@ -104,8 +108,9 @@ A browser-based version of the same tutor is also available, so you can
 practice from a phone, tablet, or another computer on the same local
 network — it reads/writes the exact same vocabulary and progress files, and
 reuses the exact same Ollama review pipeline, as the command line tool
-above. It does not require authentication and is not exposed to the public
-Internet by default.
+above. Each learner logs in to their own account first (see
+[Accounts](#accounts-web-ui) below — the web UI won't start without an
+`accounts.yml`), and it is not exposed to the public Internet by default.
 
 ```bash
 .venv/bin/python -m src.web --vocab-dir path/to/vocabulary --progress-file progress.md
@@ -117,7 +122,8 @@ reachable at your machine's own LAN IP address, e.g.
 your machine's LAN IP with `ipconfig getifaddr en0` on macOS or `ip addr` on
 Linux). It accepts the same `--vocab-dir`, `--progress-file`, `--group`,
 `--ollama-url`, `--model`, `--order`, and `--mode` flags as the CLI, plus
-`--host` and `--port` to change what it binds to. `--order` and `--mode`
+`--host` and `--port` to change what it binds to and `--accounts-file`
+(default `./accounts.yml`) to choose the accounts list. `--order` and `--mode`
 only take effect when `--group` is also given — otherwise the interactive
 choose screen below governs both fresh, every time.
 
@@ -144,6 +150,46 @@ logged). Submitting an empty sentence asks you to confirm skipping the
 word. "End session" in the header returns to the word sets mid-session;
 the word in progress is not logged. In **recall-only** mode (see above)
 there's no sentence step at all.
+
+### Accounts (web UI)
+
+Several people can share one running web UI — say, you on your laptop and
+your partner on their phone — each practicing under their own account, at
+the same time, without seeing or affecting each other's session or history.
+There is no sign-up screen: you list the accounts by hand.
+
+```bash
+cp accounts.example.yml accounts.yml   # then edit usernames/passwords
+```
+
+```yaml
+accounts:
+  - username: weibo
+    password: change-me
+    display_name: Weibo        # optional, shown in the header
+  - username: lily
+    password: change-me-too
+```
+
+- Usernames ignore case and may use `a–z`, `0–9`, `_`, `-` (max 32).
+  Passwords are matched exactly; quote any that look like a number or
+  yes/no (`"1234"`). Full format:
+  `specs/015-multi-account-login/contracts/accounts-file-format.md`.
+- **The first account owns the existing `progress.md`** (so the history
+  you had before accounts existed stays yours); every other account writes
+  `progress-<username>.md` next to it. All accounts share the same
+  vocabulary folder.
+- Changing `accounts.yml` takes effect on restart. The web UI refuses to
+  start, with a message saying why, if the file is missing, empty, or lists
+  a username twice. Passwords are never printed.
+- A login lasts (even across browser restarts) until you press **Log out**
+  or the server restarts. Logging out mid-word discards that word unlogged,
+  like **End session**.
+- `accounts.yml` is gitignored. Passwords are stored and sent as plain
+  text — this keeps learners apart on a trusted home network; it is not
+  security for anything exposed to the Internet.
+
+The command line tool has no accounts or login and is unchanged.
 
 The web UI loads its fonts (Source Serif 4, Noto Serif SC) and icons
 (Phosphor) from Google Fonts and unpkg. Offline, it falls back to local

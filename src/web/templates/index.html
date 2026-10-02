@@ -14,10 +14,28 @@
   <header class="nav site-header">
     <span class="nav-brand">English Tutor</span>
     <button id="end-session-button" type="button" class="btn btn-ghost" hidden>End session</button>
+    <span id="account-name" class="account-name text-muted" hidden></span>
+    <button id="logout-button" type="button" class="btn btn-ghost" hidden>Log out</button>
   </header>
 
   <main id="app" class="page">
     <div id="warnings" class="warnings" role="status" hidden></div>
+
+    <section id="login-view" class="screen" hidden>
+      <form id="login-form" class="login-form" novalidate>
+        <h1 class="setup-title">Log in</h1>
+        <div class="field">
+          <label for="login-username">Username</label>
+          <input id="login-username" class="input" name="username" type="text" autocomplete="username" autocapitalize="off" spellcheck="false">
+        </div>
+        <div class="field">
+          <label for="login-password">Password</label>
+          <input id="login-password" class="input" name="password" type="password" autocomplete="current-password">
+        </div>
+        <p id="login-error" class="login-error" role="alert" hidden></p>
+        <button type="submit" class="btn btn-primary btn-lg">Log in</button>
+      </form>
+    </section>
 
     <section id="choose-view" class="screen" hidden>
       <h1 class="setup-title">Which words do you want to practice?</h1>

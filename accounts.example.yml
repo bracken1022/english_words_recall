@@ -1,0 +1,13 @@
+# Learner accounts for the English Tutor web UI (spec 015).
+#
+# Copy this file to accounts.yml (which git ignores) and edit it, then
+# restart the web UI. The first account owns the existing progress.md;
+# every other account writes progress-<username>.md next to it.
+# Quote any password that looks like a number or yes/no ("1234", "yes").
+accounts:
+  - username: weibo
+    password: change-me
+    display_name: Weibo
+  - username: lily
+    password: change-me-too
+    display_name: Lily

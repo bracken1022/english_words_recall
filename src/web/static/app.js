@@ -6,11 +6,18 @@
     sentence: document.getElementById("sentence-view"),
     feedback: document.getElementById("feedback-view"),
     complete: document.getElementById("complete-view"),
+    login: document.getElementById("login-view"),
   };
   const chooseListEl = document.getElementById("choose-list");
   const modeHintEl = document.getElementById("mode-hint");
   const warningsEl = document.getElementById("warnings");
   const endSessionButton = document.getElementById("end-session-button");
+  const accountNameEl = document.getElementById("account-name");
+  const logoutButton = document.getElementById("logout-button");
+  const loginForm = document.getElementById("login-form");
+  const loginUsernameInput = document.getElementById("login-username");
+  const loginPasswordInput = document.getElementById("login-password");
+  const loginErrorEl = document.getElementById("login-error");
   const chineseEl = document.getElementById("chinese");
   const answerForm = document.getElementById("answer-form");
   const answerInput = document.getElementById("answer-input");
@@ -84,13 +91,26 @@
     return (text || "").toLowerCase().replace(/[^a-z0-9' ]/g, " ").replace(/\s+/g, " ").trim();
   }
 
+  // Every /api/ call goes through here: a 401 (not logged in, or the
+  // server restarted) shows the login screen and resolves to null, so
+  // callers just stop (spec 015).
+  function isUnauthorized(resp) {
+    if (resp.status !== 401) return false;
+    showLogin();
+    return true;
+  }
+
+  async function api(url, options) {
+    const resp = await fetch(url, options);
+    return isUnauthorized(resp) ? null : resp;
+  }
+
   async function postJson(url, body) {
-    const resp = await fetch(url, {
+    return api(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-    return resp;
   }
 
   // --- rendering -----------------------------------------------------------
@@ -117,12 +137,36 @@
     stepActionsEl.hidden = continueLabel === null && !retry;
   }
 
+  function showLogin() {
+    currentState = null;
+    sentenceIntro = false;
+    stopRecording(true);
+    showOnly("login");
+    warningsEl.hidden = true;
+    wordFeedbackEl.hidden = true;
+    setActions();
+    endSessionButton.hidden = true;
+    accountNameEl.hidden = true;
+    logoutButton.hidden = true;
+    loginUsernameInput.focus();
+  }
+
+  function showLoginError(message) {
+    loginErrorEl.textContent = message;
+    loginErrorEl.hidden = false;
+  }
+
   function renderState(state) {
     currentState = state;
     if (state.step !== "sentence") sentenceIntro = false;
 
     showWarnings(state.warnings);
     endSessionButton.hidden = !state.can_end_session;
+    if (state.account) {
+      accountNameEl.textContent = state.account.display_name || state.account.username;
+      accountNameEl.hidden = false;
+      logoutButton.hidden = false;
+    }
     wordFeedbackEl.hidden = true;
     setActions();
     if (state.step !== "sentence") stopRecording(true);
@@ -399,7 +443,7 @@
       }
       button.type = "button";
       button.addEventListener("click", async () => {
-        await fetch("/api/select", {
+        const resp = await fetch("/api/select", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -408,13 +452,15 @@
             mode: getSelectedMode(),
           }),
         });
+        if (isUnauthorized(resp)) return;
         await fetchState();
       });
     }
   }
 
   async function fetchState() {
-    const resp = await fetch("/api/state");
+    const resp = await api("/api/state");
+    if (!resp) return;
     renderState(await resp.json());
   }
 
@@ -424,8 +470,9 @@
     if (busy) return;
     busy = true;
     try {
-      await postJson("/api/answer", { answer });
-      const resp = await fetch("/api/state");
+      if (!(await postJson("/api/answer", { answer }))) return;
+      const resp = await api("/api/state");
+      if (!resp) return;
       const state = await resp.json();
       sentenceIntro = state.step === "sentence";
       renderState(state);
@@ -444,6 +491,7 @@
     busy = true;
     try {
       const resp = await postJson("/api/continue");
+      if (!resp) return;
       renderState(await resp.json());
     } finally {
       busy = false;
@@ -475,17 +523,19 @@
 
   retrySentenceButton.addEventListener("click", async () => {
     const resp = await postJson("/api/retry-sentence");
+    if (!resp) return;
     renderState(await resp.json());
   });
 
   endSessionButton.addEventListener("click", async () => {
     stopRecording(true);
     const resp = await postJson("/api/end");
-    if (resp.ok) renderState(await resp.json());
+    if (resp && resp.ok) renderState(await resp.json());
   });
 
   restartButton.addEventListener("click", async () => {
     const resp = await postJson("/api/restart");
+    if (!resp) return;
     renderState(await resp.json());
   });
 
@@ -528,7 +578,7 @@
       if (!shouldSkip) {
         return;
       }
-      await fetch("/api/skip", { method: "POST" });
+      if (!(await postJson("/api/skip"))) return;
       await fetchState();
       return;
     }
@@ -540,6 +590,7 @@
     sentenceSubmitButton.disabled = true;
     try {
       const resp = await postJson("/api/sentence", { sentence: sentenceInput.value });
+      if (!resp) return;
       await resp.json();
     } finally {
       spinnerEl.hidden = true;
@@ -552,6 +603,7 @@
   skipButton.addEventListener("click", async () => {
     stopRecording(true);
     const resp = await postJson("/api/skip");
+    if (!resp) return;
     renderState(await resp.json());
   });
 
@@ -623,11 +675,12 @@
         const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
         transcribingEl.hidden = false;
         try {
-          const resp = await fetch("/api/transcribe", {
+          const resp = await api("/api/transcribe", {
             method: "POST",
             headers: { "Content-Type": blob.type },
             body: blob,
           });
+          if (!resp) return;
           const data = await resp.json();
           if (data.available) {
             sentenceInput.value = data.text;
@@ -645,6 +698,42 @@
       // fall back to typing only (FR-004).
       micButton.hidden = true;
     }
+  });
+
+  // --- login (spec 015) -----------------------------------------------------
+
+  loginForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const username = loginUsernameInput.value;
+    const password = loginPasswordInput.value;
+    if (username.trim() === "" || password === "") {
+      showLoginError("Enter both a username and a password");
+      return;
+    }
+    const resp = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    if (resp.status === 401) {
+      showLoginError("Username or password is incorrect");
+      loginPasswordInput.value = "";
+      loginPasswordInput.focus();
+      return;
+    }
+    if (!resp.ok) {
+      showLoginError("Enter both a username and a password");
+      return;
+    }
+    loginUsernameInput.value = "";
+    loginPasswordInput.value = "";
+    loginErrorEl.hidden = true;
+    await fetchState();
+  });
+
+  logoutButton.addEventListener("click", async () => {
+    await fetch("/api/logout", { method: "POST" });
+    showLogin();
   });
 
   fetchState();
