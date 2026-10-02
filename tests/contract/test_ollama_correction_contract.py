@@ -69,6 +69,8 @@ def test_grammar_problem_triggers_teacher_call(mock_post):
     assert mock_post.call_count == 2
     judge_payload = mock_post.call_args_list[0].kwargs["json"]
     teacher_payload = mock_post.call_args_list[1].kwargs["json"]
+    assert judge_payload["think"] is False
+    assert teacher_payload["think"] is False
     assert set(judge_payload["format"]["required"]) == {"uses_expression", "grammatically_correct", "natural"}
     assert set(teacher_payload["format"]["required"]) == {"corrected", "explanation"}
 

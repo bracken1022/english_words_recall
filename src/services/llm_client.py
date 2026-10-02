@@ -38,8 +38,10 @@ _JUDGE_REQUIRED_FIELDS = ("uses_expression", "grammatically_correct", "natural")
 
 _TEACHER_SYSTEM_PROMPT = (
     "You are an English writing teacher helping a language learner fix a "
-    "mistake in their sentence. Respond only with the requested JSON "
-    "object."
+    "mistake in their sentence. Preserve the learner's intended meaning "
+    "and the target expression. Make only the changes needed for grammar "
+    "and naturalness; do not replace an action or idea with a different "
+    "one. Respond only with the requested JSON object."
 )
 
 _TEACHER_RESPONSE_FORMAT = {
@@ -137,6 +139,7 @@ def _request_judge(
     payload = {
         "model": model,
         "stream": False,
+        "think": False,
         "format": _JUDGE_RESPONSE_FORMAT,
         "messages": [
             {"role": "system", "content": _JUDGE_SYSTEM_PROMPT},
@@ -174,6 +177,7 @@ def _request_teacher(
     payload = {
         "model": model,
         "stream": False,
+        "think": False,
         "format": _TEACHER_RESPONSE_FORMAT,
         "messages": [
             {"role": "system", "content": _TEACHER_SYSTEM_PROMPT},
