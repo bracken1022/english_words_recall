@@ -695,3 +695,34 @@ p { margin: 0; }
   .account-name { flex: 0 1 auto; max-width: 12ch; }
   .login-form .btn { align-self: stretch; }
 }
+
+/* — word-list upload (spec 016) — */
+
+.upload-area {
+  margin-top: 48px;
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: var(--space-3);
+}
+.upload-result { font-size: 15px; }
+.upload-result p + p { margin-top: var(--space-1); }
+.upload-result--error { color: var(--color-accent-2-700); }
+.upload-skipped { margin: var(--space-1) 0 var(--space-2); padding-left: 1.2em; color: var(--color-muted); }
+.option-hint code {
+  font: inherit; font-style: normal;
+  background: var(--color-surface); padding: 0 4px; border-radius: var(--radius-sm);
+}
+
+@media (max-width: 600px) {
+  .upload-area .btn { align-self: stretch; }
+}
+
+.my-lists { margin-top: var(--space-6); width: 100%; max-width: 560px; }
+.my-lists-items { list-style: none; margin: var(--space-2) 0 0; padding: 0; }
+.my-list-row {
+  display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) 0;
+  border-top: 1px solid var(--color-divider);
+}
+.my-list-name { font-weight: 600; overflow-wrap: anywhere; }
+.my-list-meta { font-size: 14px; }
+.my-list-row .btn { margin-left: auto; }

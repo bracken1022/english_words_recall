@@ -251,6 +251,20 @@ class PracticeSession:
         self.all_items = items
         self.step = "choose" if self.all_items else "empty"
 
+    def set_vocab_dir(self, vocab_dir: Path) -> None:
+        """Point the session at a different vocabulary folder (spec 016:
+        an account switches between the shared folder and its own uploaded
+        lists). The word-set screen picks it up right away; a session in
+        progress, or one locked to a group at startup, keeps its words and
+        only uses the new folder at its next reload (research.md R3)."""
+        self.vocab_dir = vocab_dir
+        if self.group_locked or self.step not in ("choose", "empty"):
+            return
+        items, warnings = load_vocabulary(vocab_dir)
+        self.warnings = warnings
+        self.all_items = items
+        self.step = "choose" if self.all_items else "empty"
+
     def end_session(self) -> None:
         """Abandon the session mid-word and return to the collection-choice
         screen (Broadsheet redesign's "End session"). The word in progress

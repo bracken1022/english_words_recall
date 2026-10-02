@@ -55,7 +55,8 @@ group: unit1
 - Add or edit items by hand-editing these files — no rebuild step needed.
 
 > **Caution**: keep `--progress-file` (and the web UI's per-account
-> `progress-<username>.md` files, which sit next to it) *outside* `--vocab-dir`. The loader reads
+> `progress-<username>.md` files, which sit next to it) and `--word-lists-dir`
+> *outside* `--vocab-dir`. The loader reads
 > every `.md` file in the vocabulary directory as vocabulary content, so a
 > progress log placed inside it will be (harmlessly, but noisily) treated as
 > a malformed vocabulary file. The defaults (`./vocabulary/` vs
@@ -122,8 +123,10 @@ reachable at your machine's own LAN IP address, e.g.
 your machine's LAN IP with `ipconfig getifaddr en0` on macOS or `ip addr` on
 Linux). It accepts the same `--vocab-dir`, `--progress-file`, `--group`,
 `--ollama-url`, `--model`, `--order`, and `--mode` flags as the CLI, plus
-`--host` and `--port` to change what it binds to and `--accounts-file`
-(default `./accounts.yml`) to choose the accounts list. `--order` and `--mode`
+`--host` and `--port` to change what it binds to, `--accounts-file`
+(default `./accounts.yml`) to choose the accounts list, and
+`--word-lists-dir` (default `./word-lists`) for learners' uploaded word
+lists. `--order` and `--mode`
 only take effect when `--group` is also given — otherwise the interactive
 choose screen below governs both fresh, every time.
 
@@ -190,6 +193,38 @@ accounts:
   security for anything exposed to the Internet.
 
 The command line tool has no accounts or login and is unchanged.
+
+### Your own word lists (web UI)
+
+Each learner can upload their own word lists from the word-set screen
+(**Upload word list**) — from a phone or any other device — and practice
+them separately from everyone else.
+
+- **Formats**: a `.csv`, `.txt` or `.tsv` file with one word per line —
+  English, then the Chinese meaning, then any extra accepted answers —
+  separated by commas (`,` or the Chinese `，`) or tabs. A spreadsheet
+  saved as CSV works, and a header row is skipped. Your existing
+  vocabulary `.md` files upload as they are, too.
+
+  ```text
+  English, Chinese
+  receive, 收到；接受, accept
+  give up，放弃
+  ```
+
+  Use `；` to separate several meanings. Lines that can't be used are
+  skipped and listed after the upload (e.g. `line 12: no Chinese meaning`).
+- **One file = one word set**, named after the file (`unit1.csv` →
+  "unit1").
+- **Once you have at least one list, you practice only your own lists**;
+  until then (or after deleting all of them) you practice the shared
+  vocabulary folder as before. Nobody ever sees anyone else's lists.
+- Upload a file with the same name to **replace** a list (you'll be asked
+  to confirm), or **Delete** it under "My word lists". Your practice
+  history is always kept. A session in progress isn't interrupted — the
+  change shows up the next time you pick a word set.
+- Limits: 1 MB and 5,000 words per file. Lists are saved as readable
+  Markdown in `word-lists/<username>/` (gitignored).
 
 The web UI loads its fonts (Source Serif 4, Noto Serif SC) and icons
 (Phosphor) from Google Fonts and unpkg. Offline, it falls back to local

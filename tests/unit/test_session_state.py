@@ -826,3 +826,56 @@ def test_retry_sentence_rejected_outside_feedback(tmp_path: Path):
     session = PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "progress.md")
     with pytest.raises(WrongStepError):
         session.retry_sentence()
+
+
+# --- spec 016: set_vocab_dir -------------------------------------------------
+
+
+def _vocab_at(path: Path, text: str) -> Path:
+    path.mkdir(parents=True)
+    (path / "words.md").write_text(text, encoding="utf-8")
+    return path
+
+
+def test_set_vocab_dir_reloads_on_choose(tmp_path: Path):
+    a = _write_vocab(tmp_path)
+    b = _vocab_at(tmp_path / "b", "---\nenglish: tailor\nchinese: 裁缝\ngroup: mine\n---\n")
+    session = PracticeSession(vocab_dir=a, progress_file=tmp_path / "p.md", offer_choice=True)
+    session.set_vocab_dir(b)
+    assert session.vocab_dir == b
+    assert [i.english for i in session.all_items] == ["tailor"]
+    assert session.step == "choose"
+
+
+def test_set_vocab_dir_moves_empty_to_choose_and_back(tmp_path: Path):
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    b = _vocab_at(tmp_path / "b", "---\nenglish: tailor\nchinese: 裁缝\n---\n")
+    session = PracticeSession(vocab_dir=empty, progress_file=tmp_path / "p.md", offer_choice=True)
+    assert session.step == "empty"
+    session.set_vocab_dir(b)
+    assert session.step == "choose"
+    session.set_vocab_dir(empty)
+    assert session.step == "empty"
+
+
+def test_set_vocab_dir_mid_session_only_stores_path(tmp_path: Path):
+    a = _write_vocab(tmp_path)
+    b = _vocab_at(tmp_path / "b", "---\nenglish: tailor\nchinese: 裁缝\n---\n")
+    session = PracticeSession(vocab_dir=a, progress_file=tmp_path / "p.md", offer_choice=True)
+    session.select_collection(None)
+    before = (list(session.items), session.step, session.current_index, list(session.all_items))
+    session.set_vocab_dir(b)
+    assert (session.items, session.step, session.current_index, session.all_items) == before
+    session.end_session()
+    assert [i.english for i in session.all_items] == ["tailor"]
+
+
+def test_set_vocab_dir_group_locked_only_stores_path(tmp_path: Path):
+    a = _write_multi_group_vocab(tmp_path)
+    b = _vocab_at(tmp_path / "b", "---\nenglish: tailor\nchinese: 裁缝\n---\n")
+    session = PracticeSession(vocab_dir=a, progress_file=tmp_path / "p.md", group="unit1")
+    before = (list(session.items), session.step)
+    session.set_vocab_dir(b)
+    assert session.vocab_dir == b
+    assert (session.items, session.step) == before

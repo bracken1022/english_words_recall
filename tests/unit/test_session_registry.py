@@ -67,3 +67,62 @@ def test_startup_options_apply_to_every_session(tmp_path: Path):
     assert session.group_locked is True
     assert session.recall_only is True
     assert session.step == "recall"
+
+
+# --- spec 016: per-account effective vocabulary folder -----------------------
+
+
+def _store_setup(tmp_path: Path):
+    from src.services.word_lists import WordListStore
+
+    registry, a, b = _setup(tmp_path)
+    store = WordListStore(tmp_path / "word-lists")
+    registry = SessionRegistry(
+        vocab_dir=tmp_path / "vocab",
+        group=None,
+        offer_choice=True,
+        order="sequential",
+        mode="sentence",
+        word_lists=store,
+    )
+    return registry, store, a, b
+
+
+def _mine():
+    from src.models.vocabulary_item import VocabularyItem
+
+    return [VocabularyItem(english="tailor", chinese="裁缝")]
+
+
+def test_session_uses_shared_folder_until_account_has_a_list(tmp_path: Path):
+    registry, store, a, b = _store_setup(tmp_path)
+    assert registry.get(b).vocab_dir == tmp_path / "vocab"
+    store.save(b, "mine", _mine())
+    fresh = SessionRegistry(
+        vocab_dir=tmp_path / "vocab",
+        group=None,
+        offer_choice=True,
+        order="sequential",
+        mode="sentence",
+        word_lists=store,
+    )
+    assert fresh.get(b).vocab_dir == tmp_path / "word-lists" / "lily"
+    assert fresh.get(a).vocab_dir == tmp_path / "vocab"
+
+
+def test_refresh_vocab_updates_live_session_on_choose(tmp_path: Path):
+    registry, store, a, b = _store_setup(tmp_path)
+    lily_session = registry.get(b)
+    weibo_session = registry.get(a)
+    weibo_before = list(weibo_session.all_items)
+    store.save(b, "mine", _mine())
+    registry.refresh_vocab(b)
+    assert lily_session.step == "choose"
+    labels = [c["label"] for c in lily_session.state()["collections"]]
+    assert labels == ["Practice everything", "mine"]
+    assert weibo_session.all_items == weibo_before
+
+
+def test_refresh_vocab_without_live_session_does_not_raise(tmp_path: Path):
+    registry, _, a, _ = _store_setup(tmp_path)
+    registry.refresh_vocab(a)

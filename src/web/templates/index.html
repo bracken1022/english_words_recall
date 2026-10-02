@@ -58,13 +58,27 @@
       </div>
       <div class="word-sets">
         <h2 class="label">Word sets</h2>
+        <p id="word-source-note" class="option-hint" hidden></p>
         <div id="choose-list" class="choose-list"></div>
+      </div>
+      <div id="upload-area" class="upload-area" hidden>
+        <button id="upload-button" type="button" class="btn btn-secondary">Upload word list</button>
+        <input id="upload-input" type="file" accept=".csv,.txt,.tsv,.md,.markdown" hidden>
+        <p id="upload-format-hint" class="option-hint">One word per line: <code>receive, 收到</code> — or a .csv / .md file.</p>
+        <div id="upload-result" class="upload-result" role="status" hidden></div>
+        <section id="my-lists" class="my-lists" hidden>
+          <h2 class="label">My word lists</h2>
+          <ul id="my-lists-items" class="my-lists-items"></ul>
+        </section>
       </div>
     </section>
 
     <section id="empty-view" class="screen" hidden>
       <h1>No words are waiting.</h1>
-      <p class="text-muted lead">Add some to the vocabulary folder to start a session.</p>
+      <p id="empty-hint" class="text-muted lead">Add some to the vocabulary folder to start a session.</p>
+      <div class="action-row action-row--spaced">
+        <button id="empty-upload-button" type="button" class="btn btn-secondary" hidden>Upload word list</button>
+      </div>
     </section>
 
     <section id="recall-view" class="screen" hidden>

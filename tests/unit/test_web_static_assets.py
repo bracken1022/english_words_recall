@@ -311,3 +311,53 @@ def test_app_js_logout_button_posts_logout_and_shows_login():
     handler = js[handler_start : js.index("\n  });", handler_start)]
     assert '"/api/logout"' in handler
     assert "showLogin()" in handler
+
+
+# --- spec 016: word-list upload ----------------------------------------------
+
+
+def test_choose_view_has_upload_controls():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    start, end = _section_bounds(html, "choose-view")
+    section = html[start:end]
+    assert re.search(r'id="upload-button"[^>]*>Upload word list</button>', section)
+    assert re.search(
+        r'<input id="upload-input" type="file" accept="\.csv,\.txt,\.tsv,\.md,\.markdown"', section
+    )
+    assert 'id="upload-format-hint"' in section
+    assert re.search(r'id="upload-result"[^>]*role="status"', section)
+
+
+def test_empty_view_has_upload_button():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    start, end = _section_bounds(html, "empty-view")
+    assert 'id="empty-upload-button"' in html[start:end]
+
+
+def test_app_js_uploads_with_formdata_and_confirms_replace():
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert "/api/word-lists" in js
+    assert "FormData" in js
+    assert "replace" in js
+    assert "Added " in js
+    assert "From now on you'll practice your own lists." in js
+
+
+def test_word_source_note():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    start, end = _section_bounds(html, "choose-view")
+    assert 'id="word-source-note"' in html[start:end]
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert "Practicing your own word lists." in js
+    assert "Practicing the shared word sets" in js
+
+
+def test_my_lists_ui_with_delete():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    start, end = _section_bounds(html, "choose-view")
+    assert 'id="my-lists"' in html[start:end]
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert 'method: "DELETE"' in js
+    assert "encodeURIComponent" in js
+    assert "Your practice history is kept." in js
+    assert "dataset.listName" in js

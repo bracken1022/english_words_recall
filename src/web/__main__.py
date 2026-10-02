@@ -54,6 +54,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
             "copy accounts.example.yml to start)"
         ),
     )
+    parser.add_argument(
+        "--word-lists-dir",
+        type=Path,
+        default=Path("word-lists"),
+        help="Where each account's uploaded word lists are kept (default: word-lists)",
+    )
     return parser
 
 
@@ -75,9 +81,11 @@ def main() -> None:
         order=args.order,
         mode=args.mode,
         accounts=accounts,
+        word_lists_dir=args.word_lists_dir,
     )
     print(f"English Tutor web UI running at http://{args.host}:{args.port} (Ctrl+C to stop)")
     print("Accounts: " + ", ".join(f"{a.username} → {a.progress_file}" for a in accounts))
+    print(f"Word lists: {args.word_lists_dir}")
     # Explicitly threaded so one account's slow sentence review never blocks
     # another account's requests (spec 015, research.md R3).
     app.run(host=args.host, port=args.port, threaded=True)

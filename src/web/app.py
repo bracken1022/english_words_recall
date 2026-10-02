@@ -13,8 +13,18 @@ from flask import session as login_session
 from src.models.account import Account
 from src.services.accounts import authenticate
 from src.services.speech_client import is_available, transcribe
+from src.services.word_lists import (
+    ListExistsError,
+    UploadFormatError,
+    WordListStore,
+    parse_upload,
+    sanitize_list_name,
+)
 from src.web.session_registry import SessionRegistry
 from src.web.session_state import PracticeSession, WrongStepError
+
+MAX_UPLOAD_BYTES = 1024 * 1024
+MAX_SKIP_MESSAGES = 20
 
 
 def create_app(
@@ -27,16 +37,20 @@ def create_app(
     order: str = "sequential",
     mode: str = "sentence",
     accounts: list[Account] | None = None,
+    word_lists_dir: Path | None = None,
 ) -> Flask:
     """*accounts* None keeps the original no-login, single-session web UI
     (only the pre-spec-015 tests rely on it); `python -m src.web` always
-    passes the loaded account list (research.md R8)."""
+    passes the loaded account list (research.md R8). *word_lists_dir*
+    (spec 016) enables per-account uploaded word lists; None means no
+    uploads and every account practices from *vocab_dir*."""
     app = Flask(__name__)
     app.config["OLLAMA_URL"] = ollama_url
     app.config["MODEL"] = model
     app.config["VOICE_AVAILABLE"] = is_available()
 
     accounts_by_name: dict[str, Account] = {}
+    store: WordListStore | None = None
     if accounts is None:
         app.practice_session = PracticeSession(
             vocab_dir=vocab_dir,
@@ -55,8 +69,14 @@ def create_app(
         # Live logins: random login id (kept in the cookie) -> username.
         # Logout deletes the id, so a copy of the old cookie stops working.
         active_logins: dict[str, str] = {}
+        store = WordListStore(word_lists_dir) if word_lists_dir is not None else None
         app.session_registry = SessionRegistry(
-            vocab_dir=vocab_dir, group=group, offer_choice=offer_choice, order=order, mode=mode
+            vocab_dir=vocab_dir,
+            group=group,
+            offer_choice=offer_choice,
+            order=order,
+            mode=mode,
+            word_lists=store,
         )
 
         @app.before_request
@@ -108,6 +128,69 @@ def create_app(
             return app.practice_session
         return app.session_registry.get(_current_account())
 
+    if accounts is not None and store is not None:
+        app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD_BYTES
+
+        @app.errorhandler(413)
+        def too_large(_exc):
+            return jsonify({"error": "The file is larger than 1 MB."}), 413
+
+        @app.get("/api/word-lists")
+        def get_word_lists():
+            account = _current_account()
+            return jsonify({"word_source": store.word_source(account), "lists": store.list(account)})
+
+        @app.delete("/api/word-lists/<path:name>")
+        def delete_word_list(name):
+            account = _current_account()
+            try:
+                deleted = store.delete(account, name)
+            except KeyError:
+                return jsonify({"error": f'No list named "{name}".'}), 404
+            app.session_registry.refresh_vocab(account)
+            return jsonify({"deleted": deleted, "word_source": store.word_source(account)})
+
+        @app.post("/api/word-lists")
+        def post_word_list():
+            upload = request.files.get("file")
+            if upload is None or not upload.filename:
+                return jsonify({"error": "Choose a file to upload."}), 400
+            try:
+                parsed = parse_upload(upload.filename, upload.read())
+            except UploadFormatError as exc:
+                status = 422 if str(exc).startswith("That list has") else 415
+                return jsonify({"error": str(exc)}), status
+            if not parsed.items:
+                return jsonify(
+                    {
+                        "error": "No words found. Use one word per line, like: "
+                        "receive, 收到 — or a .md vocabulary file.",
+                        "skipped": parsed.skipped[:MAX_SKIP_MESSAGES],
+                        "skipped_count": len(parsed.skipped),
+                    }
+                ), 422
+
+            account = _current_account()
+            name = sanitize_list_name(Path(upload.filename).stem)
+            try:
+                result = store.save(
+                    account, name, parsed.items, replace=request.form.get("replace") == "true"
+                )
+            except ListExistsError as exc:
+                return jsonify({"exists": True, "name": exc.name}), 409
+            app.session_registry.refresh_vocab(account)
+            return jsonify(
+                {
+                    "name": result.name,
+                    "replaced": result.replaced,
+                    "added": len(parsed.items),
+                    "skipped_count": len(parsed.skipped),
+                    "skipped": parsed.skipped[:MAX_SKIP_MESSAGES],
+                    "first_list": result.first_list,
+                    "applies_now": not _current_session().group_locked,
+                }
+            )
+
     @app.get("/")
     def index():
         return render_template("index.html")
@@ -117,6 +200,8 @@ def create_app(
         state = {**_current_session().state(), "voice_available": app.config["VOICE_AVAILABLE"]}
         if accounts is not None:
             state["account"] = _account_json(_current_account())
+            if store is not None:
+                state["word_source"] = store.word_source(_current_account())
         return jsonify(state)
 
     @app.post("/api/transcribe")

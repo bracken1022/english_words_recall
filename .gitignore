@@ -28,6 +28,7 @@ htmlcov/
 /progress.md
 /progress-*.md
 /accounts.yml
+/word-lists/
 
 # Design workflow screenshots (spec 014)
 /design/verification/

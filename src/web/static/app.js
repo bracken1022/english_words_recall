@@ -18,6 +18,15 @@
   const loginUsernameInput = document.getElementById("login-username");
   const loginPasswordInput = document.getElementById("login-password");
   const loginErrorEl = document.getElementById("login-error");
+  const uploadAreaEl = document.getElementById("upload-area");
+  const uploadButton = document.getElementById("upload-button");
+  const emptyUploadButton = document.getElementById("empty-upload-button");
+  const uploadInput = document.getElementById("upload-input");
+  const uploadResultEl = document.getElementById("upload-result");
+  const emptyHintEl = document.getElementById("empty-hint");
+  const wordSourceNoteEl = document.getElementById("word-source-note");
+  const myListsEl = document.getElementById("my-lists");
+  const myListsItemsEl = document.getElementById("my-lists-items");
   const chineseEl = document.getElementById("chinese");
   const answerForm = document.getElementById("answer-form");
   const answerInput = document.getElementById("answer-input");
@@ -162,6 +171,24 @@
 
     showWarnings(state.warnings);
     endSessionButton.hidden = !state.can_end_session;
+    // Uploads exist only for a logged-in account on a server with word
+    // lists enabled, which is exactly when the state carries word_source.
+    const canUpload = Boolean(state.account) && state.word_source !== undefined;
+    uploadAreaEl.hidden = !canUpload;
+    emptyUploadButton.hidden = !canUpload;
+    emptyHintEl.textContent = canUpload
+      ? "Upload a word list to start practicing."
+      : "Add some to the vocabulary folder to start a session.";
+    if (state.step !== "choose") uploadResultEl.hidden = true;
+    wordSourceNoteEl.hidden = !canUpload;
+    if (canUpload && state.step === "choose") fetchLists();
+    else myListsEl.hidden = true;
+    if (canUpload) {
+      wordSourceNoteEl.textContent =
+        state.word_source === "own"
+          ? "Practicing your own word lists."
+          : "Practicing the shared word sets — upload a list to practice your own words.";
+    }
     if (state.account) {
       accountNameEl.textContent = state.account.display_name || state.account.username;
       accountNameEl.hidden = false;
@@ -698,6 +725,95 @@
       // fall back to typing only (FR-004).
       micButton.hidden = true;
     }
+  });
+
+  // --- word-list upload (spec 016) ----------------------------------------
+
+  function showUploadResult(lines, isError, skipped = []) {
+    uploadResultEl.replaceChildren();
+    uploadResultEl.classList.toggle("upload-result--error", isError);
+    for (const line of lines) uploadResultEl.append(el("p", "", line));
+    if (skipped.length > 0) {
+      const list = el("ul", "upload-skipped");
+      for (const message of skipped) list.append(el("li", "", message));
+      uploadResultEl.append(list);
+    }
+    uploadResultEl.hidden = false;
+  }
+
+  async function uploadFile(file, replace = false) {
+    const form = new FormData();
+    form.append("file", file);
+    if (replace) form.append("replace", "true");
+    const resp = await fetch("/api/word-lists", { method: "POST", body: form });
+    if (isUnauthorized(resp)) return;
+    const data = await resp.json();
+    if (resp.status === 409) {
+      if (confirm(`Replace your list “${data.name}”?`)) await uploadFile(file, true);
+      return;
+    }
+    if (!resp.ok) {
+      // The result area lives on the choose screen; from the empty screen
+      // an error has nowhere visible to go, so say it directly.
+      if (!currentState || currentState.step !== "choose") alert(data.error);
+      else showUploadResult([data.error], true, data.skipped || []);
+      return;
+    }
+    // Re-render first: the new list may switch the screen from "empty" to
+    // "choose", and the result lives on the choose screen.
+    await fetchState();
+    const words = data.added === 1 ? "word" : "words";
+    const lines = [`Added ${data.added} ${words} to “${data.name}”.`];
+    if (data.skipped_count > 0) lines.push(`Skipped ${data.skipped_count}:`);
+    const tail = [];
+    if (data.first_list) tail.push("From now on you'll practice your own lists.");
+    if (!data.applies_now) {
+      tail.push("New lists show up when the tutor isn't locked to one word set.");
+    }
+    showUploadResult(lines, false, data.skipped);
+    for (const line of tail) uploadResultEl.append(el("p", "", line));
+  }
+
+  async function fetchLists() {
+    const resp = await api("/api/word-lists");
+    if (!resp) return;
+    const data = await resp.json();
+    myListsItemsEl.replaceChildren();
+    for (const entry of data.lists) {
+      const uploaded = new Date(entry.uploaded_at).toLocaleDateString(undefined, {
+        day: "numeric",
+        month: "short",
+      });
+      const words = entry.word_count === 1 ? "word" : "words";
+      const deleteButton = el("button", "btn btn-ghost", "Delete");
+      deleteButton.type = "button";
+      deleteButton.dataset.listName = entry.name;
+      deleteButton.addEventListener("click", () => deleteList(entry.name));
+      const row = el("li", "my-list-row");
+      row.append(
+        el("span", "my-list-name", entry.name),
+        el("span", "my-list-meta text-muted", `${entry.word_count} ${words} · uploaded ${uploaded}`),
+        deleteButton,
+      );
+      myListsItemsEl.append(row);
+    }
+    myListsEl.hidden = data.lists.length === 0;
+  }
+
+  async function deleteList(name) {
+    if (!confirm(`Delete your list “${name}”? Your practice history is kept.`)) return;
+    const resp = await fetch(`/api/word-lists/${encodeURIComponent(name)}`, { method: "DELETE" });
+    if (isUnauthorized(resp)) return;
+    uploadResultEl.hidden = true;
+    await fetchState();
+  }
+
+  uploadButton.addEventListener("click", () => uploadInput.click());
+  emptyUploadButton.addEventListener("click", () => uploadInput.click());
+  uploadInput.addEventListener("change", async () => {
+    const file = uploadInput.files[0];
+    uploadInput.value = "";
+    if (file) await uploadFile(file);
   });
 
   // --- login (spec 015) -----------------------------------------------------

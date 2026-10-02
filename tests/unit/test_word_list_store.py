@@ -1,0 +1,149 @@
+"""Unit tests for sanitize_list_name and WordListStore (spec 016,
+data-model.md "Word List")."""
+
+from pathlib import Path
+
+import pytest
+
+from src.models.account import Account
+from src.models.vocabulary_item import VocabularyItem
+from src.services.vocabulary_loader import load_vocabulary
+from src.services.word_lists import ListExistsError, WordListStore, sanitize_list_name
+
+LILY = Account("lily", "pw", None, Path("progress-lily.md"))
+WEIBO = Account("weibo", "pw", None, Path("progress.md"))
+
+
+def _items(*words: str) -> list[VocabularyItem]:
+    return [VocabularyItem(english=w, chinese=f"{w}-中") for w in words]
+
+
+@pytest.mark.parametrize(
+    ("stem", "expected"),
+    [
+        ("Unit 1", "Unit 1"),
+        ("  my   words ", "my words"),
+        ("../../etc/passwd", "etcpasswd"),
+        (".hidden", "hidden"),
+        ("单元一", "单元一"),
+        ("T_words-2", "T_words-2"),
+        ("$$$", ""),
+    ],
+)
+def test_sanitize_list_name(stem, expected):
+    assert sanitize_list_name(stem) == expected
+
+
+def test_sanitize_truncates_to_64():
+    assert len(sanitize_list_name("a" * 80)) == 64
+
+
+def test_save_writes_loadable_markdown_with_group_set_to_name(tmp_path: Path):
+    store = WordListStore(tmp_path)
+    items = [
+        VocabularyItem(english="receive", chinese="收到", alternates=["accept"], group="x"),
+        VocabularyItem(english="on", chinese="在上面"),
+    ]
+    result = store.save(LILY, "unit1", items)
+    assert result.name == "unit1"
+    assert result.replaced is False
+    assert result.first_list is True
+
+    loaded, warnings = load_vocabulary(tmp_path / "lily")
+    assert warnings == []
+    assert [(i.english, i.chinese, i.alternates, i.group) for i in loaded] == [
+        ("receive", "收到", ["accept"], "unit1"),
+        ("on", "在上面", [], "unit1"),
+    ]
+
+
+def test_second_save_is_not_first_list(tmp_path: Path):
+    store = WordListStore(tmp_path)
+    store.save(LILY, "a", _items("x"))
+    assert store.save(LILY, "b", _items("y")).first_list is False
+
+
+def test_empty_name_becomes_my_words_then_numbered(tmp_path: Path):
+    store = WordListStore(tmp_path)
+    assert store.save(LILY, "", _items("x")).name == "My words"
+    assert store.save(LILY, "", _items("y")).name == "My words 2"
+
+
+def test_existing_name_case_insensitive_requires_replace(tmp_path: Path):
+    store = WordListStore(tmp_path)
+    store.save(LILY, "unit1", _items("old"))
+    before = (tmp_path / "lily" / "unit1.md").read_text(encoding="utf-8")
+    with pytest.raises(ListExistsError) as exc:
+        store.save(LILY, "Unit1", _items("new"))
+    assert exc.value.name == "unit1"
+    assert (tmp_path / "lily" / "unit1.md").read_text(encoding="utf-8") == before
+
+
+def test_replace_overwrites_same_file(tmp_path: Path):
+    store = WordListStore(tmp_path)
+    store.save(LILY, "unit1", _items("old"))
+    result = store.save(LILY, "Unit1", _items("new"), replace=True)
+    assert result.replaced is True
+    assert result.name == "unit1"
+    assert sorted(p.name for p in (tmp_path / "lily").iterdir()) == ["unit1.md"]
+    loaded, _ = load_vocabulary(tmp_path / "lily")
+    assert [i.english for i in loaded] == ["new"]
+
+
+def test_no_temp_files_left(tmp_path: Path):
+    store = WordListStore(tmp_path)
+    store.save(LILY, "unit1", _items("x"))
+    assert [p.suffix for p in (tmp_path / "lily").iterdir()] == [".md"]
+
+
+def test_effective_dir_and_word_source(tmp_path: Path):
+    shared = tmp_path / "shared"
+    store = WordListStore(tmp_path / "lists")
+    assert store.effective_dir(LILY, shared) == shared
+    assert store.word_source(LILY) == "shared"
+    store.save(LILY, "unit1", _items("x"))
+    assert store.effective_dir(LILY, shared) == tmp_path / "lists" / "lily"
+    assert store.word_source(LILY) == "own"
+    assert store.effective_dir(WEIBO, shared) == shared
+
+
+def test_accounts_are_isolated(tmp_path: Path):
+    store = WordListStore(tmp_path)
+    store.save(LILY, "unit1", _items("x"))
+    assert not (tmp_path / "weibo").exists()
+
+
+# --- US3: list and delete ------------------------------------------------------
+
+
+def test_list_returns_sorted_names_counts_and_dates(tmp_path: Path):
+    store = WordListStore(tmp_path)
+    store.save(LILY, "B", _items("x", "y"))
+    store.save(LILY, "a", _items("z"))
+    lists = store.list(LILY)
+    assert [(entry["name"], entry["word_count"]) for entry in lists] == [("a", 1), ("B", 2)]
+    for entry in lists:
+        assert entry["uploaded_at"].endswith("+00:00")
+    assert store.list(WEIBO) == []
+
+
+def test_delete_is_case_insensitive_and_falls_back_to_shared(tmp_path: Path):
+    store = WordListStore(tmp_path / "lists")
+    store.save(LILY, "unit1", _items("x"))
+    assert store.delete(LILY, "UNIT1") == "unit1"
+    assert store.list(LILY) == []
+    assert store.effective_dir(LILY, tmp_path / "shared") == tmp_path / "shared"
+
+
+def test_delete_unknown_raises_keyerror(tmp_path: Path):
+    with pytest.raises(KeyError):
+        WordListStore(tmp_path).delete(LILY, "nope")
+
+
+def test_delete_cannot_reach_another_account(tmp_path: Path):
+    store = WordListStore(tmp_path)
+    store.save(WEIBO, "unit1", _items("x"))
+    store.save(LILY, "mine", _items("y"))
+    with pytest.raises(KeyError):
+        store.delete(LILY, "../weibo/unit1")
+    assert (tmp_path / "weibo" / "unit1.md").exists()
