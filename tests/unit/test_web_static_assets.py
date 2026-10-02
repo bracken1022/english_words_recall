@@ -361,3 +361,38 @@ def test_my_lists_ui_with_delete():
     assert "encodeURIComponent" in js
     assert "Your practice history is kept." in js
     assert "dataset.listName" in js
+
+
+# --- spec 017: IPA after reveal ------------------------------------------------
+
+
+def _function_body(js: str, name: str) -> str:
+    start = js.index(f"function {name}(")
+    end = js.index("\n  function ", start + 1)
+    return js[start:end]
+
+
+def test_sentence_view_has_target_ipa():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    start, end = _section_bounds(html, "sentence-view")
+    assert re.search(
+        r'<span id="target-ipa" class="ipa" lang="en-GB-fonipa">', html[start:end]
+    )
+
+
+def test_app_js_renders_ipa_after_reveal():
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert "en-GB-fonipa" in js
+    assert '"ipa"' in js
+    for name in ("renderRecallResult", "renderSentence", "renderFeedback"):
+        assert "state.ipa" in _function_body(js, name), name
+
+
+def test_ipa_style_exists():
+    assert re.search(r"^\.ipa\s*\{", CSS_PATH.read_text(encoding="utf-8"), re.MULTILINE)
+
+
+def test_upload_hint_mentions_pronunciation():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    start = html.index('id="upload-format-hint"')
+    assert "/rɪˈsiːv/" in html[start : html.index("</p>", start)]

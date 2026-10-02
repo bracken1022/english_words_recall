@@ -105,3 +105,32 @@ chinese: 放弃
     assert len(warnings) == 1
     assert len(items) == 1
     assert items[0].english == "give up"
+
+
+# --- spec 017: optional ipa field ---------------------------------------------
+
+
+def test_ipa_field_loaded_and_bad_value_only_warns(tmp_path: Path):
+    (tmp_path / "unit1.md").write_text(
+        "---\nenglish: receive\nipa: rɪˈsiːv\nchinese: 收到\n---\n\n"
+        "---\nenglish: plain\nchinese: 普通\n---\n\n"
+        "---\nenglish: bad\nipa: 42\nchinese: 坏\n---\n",
+        encoding="utf-8",
+    )
+    items, warnings = load_vocabulary(tmp_path)
+    assert [i.ipa for i in items] == ["rɪˈsiːv", None, None]
+    assert warnings == [
+        "unit1.md: 'bad': ipa \"42\" is not a pronunciation — shown without one"
+    ]
+
+
+def test_file_without_ipa_has_no_warnings(tmp_path: Path):
+    (tmp_path / "unit1.md").write_text("---\nenglish: receive\nchinese: 收到\n---\n")
+    assert load_vocabulary(tmp_path)[1] == []
+
+
+def test_ipa_on_is_text(tmp_path: Path):
+    (tmp_path / "unit1.md").write_text("---\nenglish: x\nipa: on\nchinese: y\n---\n")
+    items, warnings = load_vocabulary(tmp_path)
+    assert items[0].ipa == "on"
+    assert warnings == []

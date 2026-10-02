@@ -2,6 +2,8 @@
 
 from dataclasses import dataclass, field
 
+from src.lib.ipa import normalize_ipa
+
 
 class VocabularyItemError(ValueError):
     """Raised when a vocabulary block is missing a required field."""
@@ -13,6 +15,10 @@ class VocabularyItem:
     chinese: str
     alternates: list[str] = field(default_factory=list)
     group: str | None = None
+    # British IPA without slashes (spec 017). ipa_problem records why a
+    # block's ipa value was rejected; the word still loads without one.
+    ipa: str | None = None
+    ipa_problem: str | None = field(default=None, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.english, str):
@@ -27,6 +33,8 @@ class VocabularyItem:
             raise VocabularyItemError("VocabularyItem requires every 'alternates' entry to be a string")
         if self.group is not None and not isinstance(self.group, str):
             raise VocabularyItemError("VocabularyItem requires 'group' to be a string or absent")
+        if self.ipa is not None and not isinstance(self.ipa, str):
+            raise VocabularyItemError("VocabularyItem requires 'ipa' to be a string or absent")
 
     @classmethod
     def from_block(cls, block: dict) -> "VocabularyItem":
@@ -34,11 +42,14 @@ class VocabularyItem:
             raise VocabularyItemError(
                 f"vocabulary block missing 'english' or 'chinese': {block!r}"
             )
+        ipa, ipa_problem = normalize_ipa(block.get("ipa"))
         return cls(
             english=block["english"],
             chinese=block["chinese"],
             alternates=list(block.get("alternates") or []),
             group=block.get("group"),
+            ipa=ipa,
+            ipa_problem=ipa_problem,
         )
 
     def accepted_expressions(self) -> list[str]:

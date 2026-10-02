@@ -328,6 +328,8 @@ class PracticeSession:
 
         if self.step in ("sentence", "feedback", "reveal"):
             base["accepted_expressions"] = item.accepted_expressions()
+            # Revealed with the answer, never during recall (spec 017).
+            base["ipa"] = item.ipa
             base["answer"] = self.pending_attempt["answer"]
             base["correct"] = self.pending_attempt["correct"]
 

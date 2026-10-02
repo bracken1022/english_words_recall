@@ -36,6 +36,7 @@
   const wordFeedbackEl = document.getElementById("word-feedback");
   const targetExpressionEl = document.getElementById("target-expression");
   const targetMeaningEl = document.getElementById("target-meaning");
+  const targetIpaEl = document.getElementById("target-ipa");
   const sentenceForm = document.getElementById("sentence-form");
   const sentenceInput = document.getElementById("sentence-input");
   const sentenceSubmitButton = sentenceForm.querySelector("button[type=submit]");
@@ -248,6 +249,14 @@
     recallHintsEl.hidden = false;
   }
 
+  // British IPA, shown only once the answer is revealed (spec 017).
+  function ipaEl(ipa) {
+    if (!ipa) return null;
+    const node = el("span", "ipa", `/${ipa}/`);
+    node.lang = "en-GB-fonipa";
+    return node;
+  }
+
   function renderRecallResult(state) {
     const accepted = state.accepted_expressions || [];
     const answer = state.answer || "";
@@ -264,10 +273,14 @@
         accepted.find((expr) => expr.trim().toLowerCase() === answer.trim().toLowerCase()) ||
         accepted[0];
       wordFeedbackEl.append(stamp("correct", "check-circle", "Correct", matched));
+      const pronunciation = ipaEl(state.ipa);
+      if (pronunciation) wordFeedbackEl.append(pronunciation);
     } else {
       wordFeedbackEl.append(stamp("incorrect", "x-circle", "Not quite"));
       const reveal = el("div", "answer-reveal");
       reveal.append(el("p", "label", "Answer"), el("span", "answer-text", accepted.join(", ")));
+      const pronunciation = ipaEl(state.ipa);
+      if (pronunciation) reveal.append(pronunciation);
       if (answer.trim()) {
         const wrote = el("span", "you-wrote", "You wrote ");
         wrote.append(el("span", "struck", answer));
@@ -287,6 +300,7 @@
   function renderSentence(state) {
     const accepted = state.accepted_expressions || [];
     targetExpressionEl.textContent = accepted[0] || "";
+    targetIpaEl.textContent = state.ipa ? `/${state.ipa}/` : "";
     targetMeaningEl.textContent = splitMeanings(state.chinese).join(" · ");
     sentenceInput.value = "";
     sentenceInput.disabled = false;
@@ -371,6 +385,8 @@
 
     const head = el("div", "feedback-head");
     head.append(el("h2", null, word));
+    const pronunciation = ipaEl(state.ipa);
+    if (pronunciation) head.append(pronunciation);
     feedbackResultEl.append(head);
 
     let kind;

@@ -15,6 +15,7 @@ from pathlib import Path
 
 import yaml
 
+from src.lib.ipa import normalize_ipa
 from src.lib.markdown_blocks import _BLOCK_RE, parse_blocks
 from src.models.account import Account
 from src.models.vocabulary_item import VocabularyItem, VocabularyItemError
@@ -69,6 +70,26 @@ def _split_line(line: str) -> list[str]:
     return [f.strip() for f in fields]
 
 
+def _is_pronunciation(field_text: str) -> bool:
+    return len(field_text) >= 2 and (field_text[0], field_text[-1]) in (("/", "/"), ("[", "]"))
+
+
+def _simple_item(number: int, fields: list[str], skipped: list[str]) -> VocabularyItem:
+    """Fields after the Chinese meaning: one written as /…/ or […] is the
+    pronunciation (spec 017); the rest are extra accepted answers."""
+    extras = [f for f in fields[2:] if f]
+    pronunciations = [f for f in extras if _is_pronunciation(f)]
+    alternates = [f for f in extras if not _is_pronunciation(f)]
+    ipa = None
+    if pronunciations:
+        ipa, problem = normalize_ipa(pronunciations[0])
+        if problem:
+            skipped.append(f'line {number}: "{pronunciations[0]}" is not a pronunciation')
+        if len(pronunciations) > 1:
+            skipped.append(f"line {number}: more than one pronunciation — kept the first")
+    return VocabularyItem(fields[0], fields[1], alternates, ipa=ipa)
+
+
 def _parse_simple(text: str) -> ParsedUpload:
     parsed = ParsedUpload()
     first_row = True
@@ -85,8 +106,7 @@ def _parse_simple(text: str) -> ParsedUpload:
         elif len(fields) < 2 or not fields[1]:
             parsed.skipped.append(f"line {number}: no Chinese meaning")
         else:
-            alternates = [f for f in fields[2:] if f]
-            parsed.items.append(VocabularyItem(fields[0], fields[1], alternates))
+            parsed.items.append(_simple_item(number, fields, parsed.skipped))
     return parsed
 
 
@@ -111,6 +131,8 @@ def _parse_markdown(text: str) -> ParsedUpload:
         # The list name becomes the group when the list is saved.
         item.group = None
         parsed.items.append(item)
+        if item.ipa_problem:
+            parsed.skipped.append(f"block {number}: {item.ipa_problem}")
     return parsed
 
 
@@ -145,12 +167,12 @@ def sanitize_list_name(stem: str) -> str:
 def _to_markdown(name: str, items: list[VocabularyItem]) -> str:
     chunks = []
     for item in items:
-        block = {
-            "english": item.english,
-            "alternates": list(item.alternates),
-            "chinese": item.chinese,
-            "group": name,
-        }
+        block = {"english": item.english}
+        if item.ipa:
+            block["ipa"] = item.ipa
+        block.update(
+            {"alternates": list(item.alternates), "chinese": item.chinese, "group": name}
+        )
         yaml_text = yaml.safe_dump(
             block, allow_unicode=True, sort_keys=False, default_flow_style=False
         )

@@ -726,3 +726,27 @@ p { margin: 0; }
 .my-list-name { font-weight: 600; overflow-wrap: anywhere; }
 .my-list-meta { font-size: 14px; }
 .my-list-row .btn { margin-left: auto; }
+
+/* — IPA pronunciation (spec 017) — */
+
+.ipa {
+  font-family: var(--font-body);
+  font-style: normal;
+  font-weight: 400;
+  font-size: 0.6em;
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+.word-feedback > .ipa,
+.answer-reveal .ipa {
+  display: block;
+  font-size: 20px;
+  margin-top: var(--space-1);
+}
+.target-row .ipa { font-size: 22px; }
+.feedback-head .ipa { font-size: 20px; }
+
+@media (max-width: 600px) {
+  .target-row .ipa,
+  .feedback-head .ipa { display: block; }
+}

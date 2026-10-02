@@ -45,13 +45,19 @@ the full contract):
 ```markdown
 ---
 english: receive
+ipa: rɪˈsiːv
 alternates: [accept]
 chinese: 收到；接受
 group: unit1
 ---
 ```
 
-- `english` and `chinese` are required; `alternates` and `group` are optional.
+- `english` and `chinese` are required; `alternates`, `group` and `ipa` are optional.
+- `ipa` is the word's British pronunciation in IPA (with or without
+  slashes). It is shown — as `/rɪˈsiːv/` — only once the answer has been
+  revealed, never while you're recalling the word, in both the command line
+  and the web UI. A value that isn't a pronunciation is reported as a
+  warning and the word is simply shown without one.
 - Add or edit items by hand-editing these files — no rebuild step needed.
 
 > **Caution**: keep `--progress-file` (and the web UI's per-account
@@ -194,6 +200,23 @@ accounts:
 
 The command line tool has no accounts or login and is unchanged.
 
+### Pronunciations (IPA)
+
+Every word that existed when pronunciations were added has British IPA
+filled in. Words you add or upload later show a pronunciation only if their
+file includes one — nothing is guessed automatically. To fill a list from a
+reviewed mapping (`file<TAB>english<TAB>ipa<TAB>note` per line), use:
+
+```bash
+.venv/bin/python -m src.tools.add_ipa --mapping mapping.tsv --dry-run word-lists/<user>/*.md
+.venv/bin/python -m src.tools.add_ipa --mapping mapping.tsv word-lists/<user>/*.md
+```
+
+It checks every value as British IPA first, backs each file up to
+`backups/ipa-<time>/` (gitignored), adds only `ipa:` lines, verifies
+nothing else changed (restoring the backup if it did), and writes a
+`REVIEW.md` with a 30-word sample to spot-check against a UK dictionary.
+
 ### Your own word lists (web UI)
 
 Each learner can upload their own word lists from the word-set screen
@@ -208,9 +231,12 @@ them separately from everyone else.
 
   ```text
   English, Chinese
-  receive, 收到；接受, accept
+  receive, 收到；接受, /rɪˈsiːv/, accept
   give up，放弃
   ```
+
+  A field written in slashes (`/rɪˈsiːv/`) or brackets is the word's
+  pronunciation; other extra fields are accepted answers.
 
   Use `；` to separate several meanings. Lines that can't be used are
   skipped and listed after the upload (e.g. `line 12: no Chinese meaning`).

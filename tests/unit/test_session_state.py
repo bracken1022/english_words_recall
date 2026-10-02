@@ -879,3 +879,68 @@ def test_set_vocab_dir_group_locked_only_stores_path(tmp_path: Path):
     session.set_vocab_dir(b)
     assert session.vocab_dir == b
     assert (session.items, session.step) == before
+
+
+# --- spec 017: ipa exposed only after recall ----------------------------------
+
+
+def _ipa_vocab(tmp_path: Path) -> Path:
+    vocab_dir = tmp_path / "ipa-vocab"
+    vocab_dir.mkdir()
+    (vocab_dir / "unit1.md").write_text(
+        "---\nenglish: receive\nipa: rɪˈsiːv\nchinese: 收到\n---\n\n"
+        "---\nenglish: give up\nchinese: 放弃\n---\n",
+        encoding="utf-8",
+    )
+    return vocab_dir
+
+
+def test_ipa_hidden_during_recall(tmp_path: Path):
+    session = PracticeSession(vocab_dir=_ipa_vocab(tmp_path), progress_file=tmp_path / "p.md")
+    assert session.step == "recall"
+    assert "ipa" not in session.state()
+    assert "rɪˈsiːv" not in str(session.state())
+
+
+@patch("src.web.session_state.request_correction")
+def test_ipa_shown_on_sentence_and_feedback(mock_request, tmp_path: Path):
+    mock_request.return_value = CorrectionResult(
+        available=True,
+        uses_expression=True,
+        needs_correction=False,
+        corrected=None,
+        explanation="",
+    )
+    session = PracticeSession(vocab_dir=_ipa_vocab(tmp_path), progress_file=tmp_path / "p.md")
+    session.submit_answer("receive")
+    assert session.state()["ipa"] == "rɪˈsiːv"
+    session.submit_sentence("I received it.", base_url="x", model="m")
+    assert session.step == "feedback"
+    assert session.state()["ipa"] == "rɪˈsiːv"
+
+
+def test_ipa_shown_on_reveal_and_null_without_one(tmp_path: Path):
+    session = PracticeSession(
+        vocab_dir=_ipa_vocab(tmp_path), progress_file=tmp_path / "p.md", mode="recall-only"
+    )
+    session.submit_answer("wrong")
+    assert session.step == "reveal"
+    assert session.state()["ipa"] == "rɪˈsiːv"
+    session.continue_to_next()
+    session.submit_answer("wrong")
+    assert session.state()["ipa"] is None
+
+
+def test_no_ipa_key_on_choose_complete_empty(tmp_path: Path):
+    vocab_dir = _ipa_vocab(tmp_path)
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "p.md", offer_choice=True)
+    assert "ipa" not in session.state()
+    empty_dir = tmp_path / "none"
+    empty_dir.mkdir()
+    empty = PracticeSession(vocab_dir=empty_dir, progress_file=tmp_path / "p.md")
+    assert "ipa" not in empty.state()
+    done = PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "p.md", mode="recall-only")
+    while done.step != "complete":
+        done.submit_answer("x")
+        done.continue_to_next()
+    assert "ipa" not in done.state()

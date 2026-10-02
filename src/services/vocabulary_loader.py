@@ -26,8 +26,14 @@ def load_vocabulary(vocab_dir: Path) -> tuple[list[VocabularyItem], list[str]]:
 
         for block in blocks:
             try:
-                items.append(VocabularyItem.from_block(block))
+                item = VocabularyItem.from_block(block)
             except VocabularyItemError as exc:
                 warnings.append(f"{md_file.name}: {exc}")
+                continue
+            items.append(item)
+            if item.ipa_problem:
+                warnings.append(
+                    f"{md_file.name}: '{item.english}': {item.ipa_problem} — shown without one"
+                )
 
     return items, warnings

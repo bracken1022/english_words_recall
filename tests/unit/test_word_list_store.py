@@ -147,3 +147,17 @@ def test_delete_cannot_reach_another_account(tmp_path: Path):
     with pytest.raises(KeyError):
         store.delete(LILY, "../weibo/unit1")
     assert (tmp_path / "weibo" / "unit1.md").exists()
+
+
+def test_saved_list_keeps_ipa_after_english(tmp_path: Path):
+    store = WordListStore(tmp_path)
+    items = [
+        VocabularyItem(english="receive", chinese="收到", ipa="rɪˈsiːv"),
+        VocabularyItem(english="plain", chinese="普通"),
+    ]
+    store.save(LILY, "unit1", items)
+    text = (tmp_path / "lily" / "unit1.md").read_text(encoding="utf-8")
+    assert "english: receive\nipa: rɪˈsiːv\n" in text
+    assert text.count("ipa:") == 1
+    loaded, _ = load_vocabulary(tmp_path / "lily")
+    assert [i.ipa for i in loaded] == ["rɪˈsiːv", None]

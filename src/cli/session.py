@@ -8,6 +8,7 @@ from pathlib import Path
 from rich.console import Console
 
 from src.cli.loading_indicator import run_with_indicator
+from src.lib.ipa import display_ipa
 from src.models.practice_attempt import PracticeAttempt
 from src.models.vocabulary_item import VocabularyItem
 from src.services.llm_client import DEFAULT_MODEL, request_correction
@@ -49,6 +50,8 @@ def run_recall_step(
         console.print(f"[green]Correct![/green] Accepted expression(s): {accepted}")
     else:
         console.print(f"[red]Incorrect.[/red] The correct expression(s): {accepted}")
+    if item.ipa:
+        console.print(f"Pronunciation: {display_ipa(item.ipa)}")
 
     return PracticeAttempt(
         timestamp=datetime.now(UTC).isoformat(timespec="seconds"),
@@ -63,12 +66,14 @@ def run_sentence_step(
     sentence_input: Callable[[], str] | None = None,
     base_url: str = "http://localhost:11434",
     model: str = DEFAULT_MODEL,
+    ipa: str | None = None,
 ) -> tuple[str, str]:
     """Prompt for a sentence using *target_expression* and show correction
     feedback from the local LLM. Returns (sentence, feedback_summary), where
     feedback_summary is a short string suitable for the progress log
     (FR-006, FR-008, FR-009, FR-010)."""
-    console.print(f'Write a sentence using "[bold]{target_expression}[/bold]":')
+    pronunciation = f" {display_ipa(ipa)}" if ipa else ""
+    console.print(f'Write a sentence using "[bold]{target_expression}[/bold]"{pronunciation}:')
 
     if sentence_input is None:
         sentence = _default_answer_input("Your sentence: ")
@@ -143,7 +148,9 @@ def run_session(
                 _wait_for_continue()
             attempt = recall_attempt
         else:
-            sentence, feedback = run_sentence_step(item.english, base_url=ollama_url, model=model)
+            sentence, feedback = run_sentence_step(
+                item.english, base_url=ollama_url, model=model, ipa=item.ipa
+            )
             attempt = PracticeAttempt(
                 timestamp=recall_attempt.timestamp,
                 item=recall_attempt.item,

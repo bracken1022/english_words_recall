@@ -64,7 +64,7 @@
       <div id="upload-area" class="upload-area" hidden>
         <button id="upload-button" type="button" class="btn btn-secondary">Upload word list</button>
         <input id="upload-input" type="file" accept=".csv,.txt,.tsv,.md,.markdown" hidden>
-        <p id="upload-format-hint" class="option-hint">One word per line: <code>receive, 收到</code> — or a .csv / .md file.</p>
+        <p id="upload-format-hint" class="option-hint">One word per line: <code>receive, 收到</code> — add <code>/rɪˈsiːv/</code> for the pronunciation — or a .csv / .md file.</p>
         <div id="upload-result" class="upload-result" role="status" hidden></div>
         <section id="my-lists" class="my-lists" hidden>
           <h2 class="label">My word lists</h2>
@@ -104,6 +104,7 @@
       <p class="label sentence-label">Use it in a sentence</p>
       <div class="target-row">
         <h1 class="target-slot"><span id="target-expression"></span></h1>
+        <span id="target-ipa" class="ipa" lang="en-GB-fonipa"></span>
         <span id="target-meaning" class="target-meaning text-muted" lang="zh-Hans"></span>
       </div>
       <form id="sentence-form" class="sentence-form">

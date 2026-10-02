@@ -129,3 +129,48 @@ def test_markdown_skips_invalid_block_with_number_and_drops_group():
 def test_markdown_yaml_bool_words_stay_text():
     parsed = parse_upload("a.md", "---\nenglish: on\nchinese: 在上面\n---\n".encode())
     assert parsed.items[0].english == "on"
+
+
+# --- spec 017: pronunciation column ----------------------------------------------
+
+
+def test_slashed_field_is_pronunciation_not_alternate():
+    item = _simple("receive, 收到, /rɪˈsiːv/, accept").items[0]
+    assert item.ipa == "rɪˈsiːv"
+    assert item.alternates == ["accept"]
+
+
+def test_pronunciation_in_any_later_position_and_brackets():
+    item = _simple("receive, 收到, accept, [rɪˈsiːv]").items[0]
+    assert (item.ipa, item.alternates) == ("rɪˈsiːv", ["accept"])
+
+
+def test_pronunciation_with_tabs():
+    item = _simple("look up\t查找\t/lʊk ˈʌp/\tsearch").items[0]
+    assert (item.ipa, item.alternates) == ("lʊk ˈʌp", ["search"])
+
+
+def test_second_pronunciation_ignored_with_message():
+    parsed = _simple("receive, 收到, /rɪˈsiːv/, /rəˈsiːv/")
+    assert parsed.items[0].ipa == "rɪˈsiːv"
+    assert parsed.skipped == ["line 1: more than one pronunciation — kept the first"]
+
+
+def test_invalid_pronunciation_keeps_word():
+    parsed = _simple("bad, 坏, /123/")
+    assert len(parsed.items) == 1
+    assert parsed.items[0].ipa is None
+    assert parsed.skipped == ['line 1: "/123/" is not a pronunciation']
+
+
+def test_markdown_invalid_ipa_keeps_word_with_message():
+    parsed = parse_upload("a.md", b"---\nenglish: x\nipa: 42\nchinese: y\n---\n")
+    assert len(parsed.items) == 1
+    assert parsed.items[0].ipa is None
+    assert parsed.skipped[0].startswith("block 1:")
+    assert "is not a pronunciation" in parsed.skipped[0]
+
+
+def test_no_pronunciation_is_invented():
+    item = _simple("receive, 收到, accept").items[0]
+    assert item.ipa is None
