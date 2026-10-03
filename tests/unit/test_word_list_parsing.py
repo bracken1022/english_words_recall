@@ -251,3 +251,30 @@ def test_default_still_requires_chinese():
     parsed = _simple("zealous\nreceive, 收到\n")
     assert [i.english for i in parsed.items] == ["receive"]
     assert parsed.skipped == ["line 1: no Chinese meaning"]
+
+
+# --- spec 018: a .md file of plain lines is read as a simple list -------------
+
+
+def test_markdown_without_blocks_reads_lines():
+    parsed = _drafts("qualify\nquality\nquantity\n", "words.md")
+    assert [d.english for d in parsed.items] == ["qualify", "quality", "quantity"]
+    assert parsed.items[0].position == "line 1"
+    assert parsed.skipped == []
+
+
+def test_markdown_lines_drop_headings_and_list_markers():
+    text = "# Unit 3\n\n- qualify\n* quality, 质量\n1. quantity\n+ tend to\n"
+    parsed = _drafts(text, "words.md")
+    assert [d.english for d in parsed.items] == ["qualify", "quality", "quantity", "tend to"]
+    assert parsed.items[1].chinese == "质量"
+
+
+def test_markdown_with_blocks_is_unchanged():
+    text = "---\nenglish: receive\nchinese: 收到\n---\n\nqualify\n"
+    parsed = _drafts(text, "words.md")
+    assert [d.english for d in parsed.items] == ["receive"]
+
+
+def test_legacy_markdown_upload_still_needs_blocks():
+    assert parse_upload("w.md", b"qualify\nquality\n").items == []

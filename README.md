@@ -257,7 +257,8 @@ them separately from everyone else.
 
 #### Automatic meanings and pronunciations
 
-You can upload bare English words, one per line. After the upload, the
+You can upload bare English words, one per line, as a `.txt`, `.csv`
+or `.md` file. In a `.md` file, a bulleted or numbered list works too. After the upload, the
 tutor fills in each word, and everything stays on your machine:
 
 - an **American IPA** pronunciation from the CMU Pronouncing Dictionary

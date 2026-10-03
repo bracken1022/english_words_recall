@@ -7,6 +7,7 @@ folder is just another vocabulary directory for load_vocabulary()."""
 
 import csv
 import os
+import re
 import shutil
 import tempfile
 import threading
@@ -162,7 +163,15 @@ def _markdown_draft(number: int, block: dict, skipped: list[str]) -> DraftWord |
     return DraftWord(english.strip(), chinese, ipa, list(alternates), f"block {number}")
 
 
+# Markdown list markers: "- word", "* word", "+ word", "1. word", "1) word".
+_LIST_MARKER = re.compile(r"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+", re.MULTILINE)
+
+
 def _parse_markdown(text: str, require_chinese: bool = True) -> ParsedUpload:
+    if not require_chinese and not _BLOCK_RE.search(text):
+        # Spec 018: a .md file of plain lines (perhaps a bulleted list) is
+        # a simple word list; "#" headings are skipped like comments.
+        return _parse_simple(_LIST_MARKER.sub("", text), require_chinese=False)
     parsed = ParsedUpload()
     # Parse block by block so each skipped one can be reported by number.
     for number, match in enumerate(_BLOCK_RE.finditer(text), start=1):

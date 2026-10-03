@@ -76,8 +76,14 @@ Spec 016's `POST /api/word-lists`, `GET /api/word-lists` and
 (`"true"` to replace an existing pending import).
 
 The parsing, file types, decoding, size and word limits are those of
-spec 016's `upload-formats.md`, with one difference: a missing Chinese
-meaning is **not** a skip reason.
+spec 016's `upload-formats.md`, with two differences:
+
+- a missing Chinese meaning is **not** a skip reason;
+- a `.md`/`.markdown` file with no `---` blocks is read as a simple list.
+  Markdown list markers (`- `, `* `, `+ `, `1. `, `1) `) are stripped,
+  and `#` headings are skipped. A file with blocks is parsed as blocks
+  only, as before. (Added 2026-10-03 after a plain-line `.md` upload
+  found no words.)
 
 | Case | Status | Body |
 |---|---|---|
