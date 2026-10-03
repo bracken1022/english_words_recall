@@ -1,0 +1,57 @@
+# Reviewed American IPA transcriptions (spec 018, research R4).
+# Convention: Oxford Learner's Dictionaries NAmE style. Length marks are
+# kept, every r is written, and the symbols are oʊ, ɡ (U+0261) and ˈ/ˌ,
+# with no slashes. Reviewed 2026-10-03.
+# Every `words` entry must pass check_american_ipa(), and every
+# `british_counterparts` entry must fail it.
+words:
+  - {english: receive, ipa: rɪˈsiːv}
+  - {english: zealous, ipa: ˈzeləs}
+  - {english: tend to, ipa: ˈtend tə}
+  - {english: water, ipa: ˈwɔːtər}
+  - {english: car, ipa: kɑːr}
+  - {english: go, ipa: ɡoʊ}
+  - {english: thought, ipa: θɔːt}
+  - {english: hot, ipa: hɑːt}
+  - {english: better, ipa: ˈbetər}
+  - {english: bird, ipa: bɜːrd}
+  - {english: color, ipa: ˈkʌlər}
+  - {english: epitomize, ipa: ɪˈpɪtəmaɪz}
+  - {english: arduous, ipa: ˈɑːrdʒuəs}
+  - {english: give up, ipa: ˌɡɪv ˈʌp}
+  - {english: here, ipa: hɪr}
+  - {english: care, ipa: ker}
+  - {english: sure, ipa: ʃʊr}
+  - {english: no, ipa: noʊ}
+  - {english: often, ipa: ˈɔːfn}
+  - {english: nation, ipa: ˈneɪʃn}
+  - {english: diligent, ipa: ˈdɪlɪdʒənt}
+  - {english: abundant, ipa: əˈbʌndənt}
+  - {english: ambiguous, ipa: æmˈbɪɡjuəs}
+  - {english: curious, ipa: ˈkjʊriəs}
+  - {english: forward, ipa: ˈfɔːrwərd}
+  - {english: hurry, ipa: ˈhɜːri}
+  - {english: honest, ipa: ˈɑːnɪst}
+  - {english: coffee, ipa: ˈkɔːfi}
+  - {english: schedule, ipa: ˈskedʒuːl}
+  - {english: tomato, ipa: təˈmeɪtoʊ}
+  - {english: garage, ipa: ɡəˈrɑːʒ}
+  - {english: leisure, ipa: ˈliːʒər}
+  - {english: tire, ipa: ˈtaɪər}
+  - {english: hour, ipa: ˈaʊər}
+  - {english: look up, ipa: ˌlʊk ˈʌp}
+  - {english: hierarchy, ipa: ˈhaɪərɑːrki}
+british_counterparts:
+  - hɒt
+  - ɡəʊ
+  - ˈwɔːtə(r)
+  - bɜːd
+  - ˈbetə(r)
+  - hɪə(r)
+  - hɪə
+  - keə
+  - ʃʊə
+  - nəʊ
+  - ˈɒfn
+  - ˈkʌlə(r)
+  - θɒt

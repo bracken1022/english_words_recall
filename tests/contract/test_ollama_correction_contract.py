@@ -212,3 +212,15 @@ def test_teacher_connection_error_makes_whole_result_unavailable(mock_post):
     mock_post.side_effect = [_judge_reply(grammatically_correct=False), ConnectionError("refused")]
     result = request_correction("receive", "bad sentence", base_url="http://localhost:11434")
     assert result.available is False
+
+
+# --- spec 018: transport refactor regression ---
+
+
+@patch("src.services.llm_client.requests.post")
+def test_connection_error_still_reports_unavailable(mock_post):
+    import requests
+
+    mock_post.side_effect = requests.ConnectionError()
+    result = request_correction("receive", "I received it.", base_url="http://localhost:11434")
+    assert result.available is False

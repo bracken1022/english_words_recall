@@ -11,7 +11,14 @@ from flask import Flask, jsonify, render_template, request
 from flask import session as login_session
 
 from src.models.account import Account
+from src.models.vocabulary_item import VocabularyItem, VocabularyItemError
 from src.services.accounts import authenticate
+from src.services.enrichment import (
+    EnrichmentRunner,
+    PendingImportStore,
+    build_import,
+    existing_lookup_for,
+)
 from src.services.speech_client import is_available, transcribe
 from src.services.word_lists import (
     ListExistsError,
@@ -25,6 +32,9 @@ from src.web.session_state import PracticeSession, WrongStepError
 
 MAX_UPLOAD_BYTES = 1024 * 1024
 MAX_SKIP_MESSAGES = 20
+IMPORT_NO_WORDS = (
+    "No words found. Put one English word per line — or upload a .md vocabulary file."
+)
 
 
 def create_app(
@@ -190,6 +200,133 @@ def create_app(
                     "applies_now": not _current_session().group_locked,
                 }
             )
+
+    if accounts is not None and store is not None:
+        # Spec 018: uploads enriched by the local model, saved on confirm
+        # (contracts/import-api-contract.md).
+        runner = EnrichmentRunner(
+            PendingImportStore(word_lists_dir), app.config["OLLAMA_URL"], app.config["MODEL"]
+        )
+        app.enrichment_runner = runner
+
+        def _import_json(account: Account):
+            return {"import": runner.state(account)}
+
+        @app.get("/api/word-lists/import")
+        def get_import():
+            return jsonify(_import_json(_current_account()))
+
+        @app.post("/api/word-lists/import")
+        def post_import():
+            upload = request.files.get("file")
+            if upload is None or not upload.filename:
+                return jsonify({"error": "Choose a file to upload."}), 400
+            try:
+                parsed = parse_upload(upload.filename, upload.read(), require_chinese=False)
+            except UploadFormatError as exc:
+                status = 422 if str(exc).startswith("That list has") else 415
+                return jsonify({"error": str(exc)}), status
+            if not parsed.items:
+                return jsonify(
+                    {
+                        "error": IMPORT_NO_WORDS,
+                        "skipped": parsed.skipped[:MAX_SKIP_MESSAGES],
+                        "skipped_count": len(parsed.skipped),
+                    }
+                ), 422
+
+            account = _current_account()
+            if runner.get(account) is not None:
+                if request.form.get("discard_pending") != "true":
+                    return jsonify({"pending": True, **_import_json(account)}), 409
+                runner.discard(account)
+            name = sanitize_list_name(Path(upload.filename).stem)
+            pending = build_import(
+                name, upload.filename, parsed, existing_lookup_for(store, account, vocab_dir)
+            )
+            runner.begin(account, pending)
+            return jsonify(_import_json(account)), 202
+
+        @app.post("/api/word-lists/import/retry")
+        def post_import_retry():
+            account = _current_account()
+            body = request.get_json(silent=True) or {}
+            try:
+                started = runner.retry(account, body.get("index"))
+            except KeyError:
+                return jsonify({"error": "Nothing to retry."}), 404
+            except ValueError:
+                return jsonify({"error": "That word can't be retried."}), 400
+            # None: a batch is already running, so report it unchanged.
+            return jsonify(_import_json(account)), 200 if started is None else 202
+
+        @app.post("/api/word-lists/import/choice")
+        def post_import_choice():
+            account = _current_account()
+            body = request.get_json(silent=True) or {}
+            try:
+                runner.set_choice(account, body.get("index"), body.get("choice"))
+            except KeyError:
+                return jsonify({"error": "Nothing to change."}), 404
+            except ValueError:
+                return jsonify({"error": "That word has no entry to update."}), 400
+            return jsonify(_import_json(account))
+
+        @app.post("/api/word-lists/import/confirm")
+        def post_import_confirm():
+            account = _current_account()
+            body = request.get_json(silent=True) or {}
+            with runner.lock(account):
+                pending = runner.current(account)
+                if pending is None:
+                    return jsonify({"error": "Nothing to save."}), 404
+                if runner.is_running(account) or pending.status == "running":
+                    return jsonify({"error": "Still enriching — wait until it finishes."}), 409
+                savable = pending.savable
+                if not savable and not pending.updates:
+                    return jsonify({"error": "No words are ready to save."}), 422
+                try:
+                    # Defence in depth: everything written must still be a
+                    # valid vocabulary entry.
+                    new_items = [
+                        VocabularyItem(i.english, i.chinese, list(i.alternates), ipa=i.ipa)
+                        for i in savable
+                    ]
+                except VocabularyItemError:
+                    return jsonify({"error": "Couldn't save the list; nothing was changed."}), 500
+                try:
+                    result = store.apply_import(
+                        account,
+                        pending.list_name,
+                        new_items,
+                        updates=pending.update_map(),
+                        replace=body.get("replace") is True,
+                    )
+                except ListExistsError as exc:
+                    return jsonify({"exists": True, "name": exc.name}), 409
+                except (OSError, KeyError):
+                    return jsonify({"error": "Couldn't save the list; nothing was changed."}), 500
+                left_out = pending.left_out_count
+                updated = len(pending.updates)
+                runner.forget(account)
+            app.session_registry.refresh_vocab(account)
+            return jsonify(
+                {
+                    "name": result.name,
+                    "replaced": result.replaced,
+                    "added": len(new_items),
+                    "updated": updated,
+                    "left_out": left_out,
+                    "first_list": result.first_list,
+                    "applies_now": not _current_session().group_locked,
+                }
+            )
+
+        @app.delete("/api/word-lists/import")
+        def delete_import():
+            if not runner.discard(_current_account()):
+                return jsonify({"error": "Nothing to discard."}), 404
+            return jsonify({"discarded": True})
 
     @app.get("/")
     def index():

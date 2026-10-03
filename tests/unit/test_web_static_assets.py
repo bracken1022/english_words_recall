@@ -396,3 +396,91 @@ def test_upload_hint_mentions_pronunciation():
     html = TEMPLATE_PATH.read_text(encoding="utf-8")
     start = html.index('id="upload-format-hint"')
     assert "/rɪˈsiːv/" in html[start : html.index("</p>", start)]
+
+
+# --- spec 018: enriched uploads (import panel) --------------------------------
+
+
+def _import_js_section() -> str:
+    js = JS_PATH.read_text(encoding="utf-8")
+    start = js.index("// --- word-list import (spec 018)")
+    end = js.index("// ---", start + 10)
+    return js[start:end]
+
+
+def test_import_panel_markup():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    area = html.index('id="upload-area"')
+    result = html.index('id="upload-result"')
+    panel = html.index('id="import-panel"')
+    assert area < result < panel
+    panel_tag = html[html.rindex("<", 0, panel) : html.index(">", panel)]
+    assert "hidden" in panel_tag
+    assert re.search(r'id="import-status"[^>]*role="status"[^>]*aria-live="polite"', html)
+    assert 'id="import-preview"' in html
+    assert 'id="import-actions"' in html
+
+
+def test_app_js_import_flow():
+    section = _import_js_section()
+    assert "/api/word-lists/import" in section
+    assert "/api/word-lists/import/confirm" in section
+    assert "Enriching vocabulary:" in section
+    assert '"progress"' in section
+    assert "%" not in section
+    assert "innerHTML" not in section
+
+
+def test_upload_input_starts_an_import():
+    js = JS_PATH.read_text(encoding="utf-8")
+    handler = js[js.index('uploadInput.addEventListener("change"') :]
+    handler = handler[: handler.index("});")]
+    assert "startImport(" in handler
+
+
+def test_upload_hint_mentions_bare_words():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    start = html.index('id="upload-format-hint"')
+    hint = html[start : html.index("</p>", start)]
+    assert "just the English is enough" in hint
+    assert "/rɪˈsiːv/" in hint
+
+
+def test_import_styles():
+    css = CSS_PATH.read_text(encoding="utf-8")
+    for selector in (".import-panel", ".import-preview", ".badge-review"):
+        assert selector in css
+
+
+def test_app_js_import_failure_handling():
+    section = _import_js_section()
+    for text in (
+        "Retry failed",
+        "/api/word-lists/import/retry",
+        "failure_reason",
+        "interrupted",
+        "You have an unfinished import",
+        "discard_pending",
+    ):
+        assert text in section
+
+
+def test_app_js_import_existing_entries():
+    section = _import_js_section()
+    for text in (
+        "Already in your words",
+        "Also in the shared words",
+        "Keep mine",
+        "Update with this",
+        "/api/word-lists/import/choice",
+        "Repeated — already above",
+    ):
+        assert text in section
+
+
+def test_app_js_import_review_badge():
+    section = _import_js_section()
+    assert "Pronunciation needs review" in section
+    assert "item.ipa_review" in section
+    assert ".title = item.ipa_review" in section
+    assert "en-US-fonipa" in section

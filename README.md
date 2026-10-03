@@ -203,8 +203,10 @@ The command line tool has no accounts or login and is unchanged.
 ### Pronunciations (IPA)
 
 Every word that existed when pronunciations were added has British IPA
-filled in. Words you add or upload later show a pronunciation only if their
-file includes one — nothing is guessed automatically. To fill a list from a
+filled in. Words uploaded from the web UI get an American IPA from an
+offline pronouncing dictionary, for you to review before saving (see
+*Automatic meanings and pronunciations* below). Words added to vocabulary files by hand show a
+pronunciation only if their file includes one. To fill a list from a
 reviewed mapping (`file<TAB>english<TAB>ipa<TAB>note` per line), use:
 
 ```bash
@@ -224,7 +226,8 @@ Each learner can upload their own word lists from the word-set screen
 them separately from everyone else.
 
 - **Formats**: a `.csv`, `.txt` or `.tsv` file with one word per line —
-  English, then the Chinese meaning, then any extra accepted answers —
+  English, then optionally the Chinese meaning, then any extra accepted
+  answers —
   separated by commas (`,` or the Chinese `，`) or tabs. A spreadsheet
   saved as CSV works, and a header row is skipped. Your existing
   vocabulary `.md` files upload as they are, too.
@@ -239,7 +242,7 @@ them separately from everyone else.
   pronunciation; other extra fields are accepted answers.
 
   Use `；` to separate several meanings. Lines that can't be used are
-  skipped and listed after the upload (e.g. `line 12: no Chinese meaning`).
+  skipped and listed after the upload (e.g. `line 12: no English word`).
 - **One file = one word set**, named after the file (`unit1.csv` →
   "unit1").
 - **Once you have at least one list, you practice only your own lists**;
@@ -251,6 +254,55 @@ them separately from everyone else.
   change shows up the next time you pick a word set.
 - Limits: 1 MB and 5,000 words per file. Lists are saved as readable
   Markdown in `word-lists/<username>/` (gitignored).
+
+#### Automatic meanings and pronunciations
+
+You can upload bare English words, one per line. After the upload, the
+tutor fills in each word, and everything stays on your machine:
+
+- an **American IPA** pronunciation from the CMU Pronouncing Dictionary
+  (a free offline dictionary of American English), written in the Oxford
+  Learner's Dictionaries NAmE style (`zealous` → `/ˈzeləs/`). Imports
+  use American IPA; the British IPA already on existing words is left
+  unchanged;
+- a **short Chinese meaning**, written by the same local Ollama model
+  used for sentence review (never a cloud service), with several
+  meanings separated by `；`;
+- **alternates**, also from the model, but only spelling variants of the
+  same word (`tyre` → `tire`, `epitomise` → `epitomize`). Synonyms such
+  as `arduous` → `difficult` are never added, because they would weaken
+  recall.
+
+Anything you put in the file yourself (a meaning, `/ipa/` or extra
+answers) is kept as you wrote it. Only the missing parts are filled in.
+
+The upload screen shows **Enriching vocabulary: 12 / 40** while it works.
+When it finishes, you get a preview of every word to review:
+
+- **Pronunciation needs review**: the tutor wasn't sure, so the word has
+  no IPA rather than a guess. This happens for words whose sound depends
+  on the meaning (*record*, *lead*), words the dictionary lists with
+  different stress (*research*), abbreviations (*NASA*), and words the
+  dictionary doesn't have. The word can still be saved; it just has no
+  pronunciation. You can add one yourself as `/…/` in the file.
+- **Already in your words**: the word is in one of your lists. **Keep
+  mine** (the default) leaves that entry exactly as it is. **Update with
+  this** replaces its pronunciation, meaning and alternates.
+- **Failed**: press **Retry** on the word, or **Retry failed** for all of
+  them. If Ollama isn't running, the whole upload waits. Start Ollama and
+  press Retry.
+
+Press **Save** to add the ready words as a new list, or **Discard** to
+drop the import. Nothing is written to your word lists until you save.
+An unfinished import is kept in `word-lists/<username>/.pending-import.json`,
+so it survives leaving the page or restarting the server.
+
+To check how well your model does this, run the evaluation against a
+reviewed word set (it needs Ollama running):
+
+```bash
+.venv/bin/python -m src.tools.eval_enrichment --model qwen3:14b
+```
 
 The web UI loads its fonts (Source Serif 4, Noto Serif SC) and icons
 (Phosphor) from Google Fonts and unpkg. Offline, it falls back to local

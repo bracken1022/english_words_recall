@@ -15,8 +15,9 @@ class VocabularyItem:
     chinese: str
     alternates: list[str] = field(default_factory=list)
     group: str | None = None
-    # British IPA without slashes (spec 017). ipa_problem records why a
-    # block's ipa value was rejected; the word still loads without one.
+    # IPA without slashes: British for the shared/017 fill, American for
+    # spec 018 imports. ipa_problem records why a block's ipa value was
+    # rejected; the word still loads without one.
     ipa: str | None = None
     ipa_problem: str | None = field(default=None, compare=False, repr=False)
 

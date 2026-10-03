@@ -222,3 +222,23 @@ def test_list_and_delete_require_login(tmp_path: Path):
     client = _client(tmp_path, username=None)
     assert client.get("/api/word-lists").status_code == 401
     assert client.delete("/api/word-lists/unit1").status_code == 401
+
+
+# --- spec 018: the legacy upload route is unchanged -------------------------
+
+
+def test_legacy_upload_still_saves_immediately(tmp_path: Path):
+    client = _client(tmp_path)
+    resp = upload(client, "receive, 收到\n")
+    assert resp.status_code == 200
+    assert set(resp.get_json()) == {
+        "name",
+        "replaced",
+        "added",
+        "skipped_count",
+        "skipped",
+        "first_list",
+        "applies_now",
+    }
+    assert (tmp_path / "word-lists" / "lily" / "unit1.md").exists()
+    assert not (tmp_path / "word-lists" / "lily" / ".pending-import.json").exists()

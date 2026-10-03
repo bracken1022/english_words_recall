@@ -82,25 +82,42 @@ def _unavailable() -> CorrectionResult:
     )
 
 
+def _post_chat(base_url: str, payload: dict, timeout: float) -> tuple[str | None, str | None]:
+    """POST *payload* to the local chat API and return (content, failure).
+    On success failure is None; otherwise content is None and failure is
+    "unavailable" (can't connect, or 404 — model not pulled), "timeout",
+    "bad_status", "bad_body" or "error". Spec 018's enrichment needs this
+    distinction; sentence review uses _post_json, which collapses it."""
+    try:
+        response = requests.post(f"{base_url}/api/chat", json=payload, timeout=timeout)
+    except requests.ConnectionError:
+        return None, "unavailable"
+    except requests.Timeout:
+        return None, "timeout"
+    except requests.RequestException:
+        return None, "error"
+    except ConnectionError:
+        return None, "unavailable"
+
+    if response.status_code == 404:
+        return None, "unavailable"
+    if response.status_code != 200:
+        return None, "bad_status"
+
+    try:
+        content = response.json()["message"]["content"]
+    except (KeyError, TypeError, ValueError):
+        return None, "bad_body"
+    return content, None
+
+
 def _post_json(base_url: str, payload: dict, timeout: float) -> str | None:
     """Shared request plumbing for both roles: POST *payload*, return the
     reply's message content string, or None on any failure (connection
     error, non-200 status, or a response missing that field) — the caller
     treats that identically to an unavailable LLM (FR-010)."""
-    try:
-        response = requests.post(f"{base_url}/api/chat", json=payload, timeout=timeout)
-    except requests.RequestException:
-        return None
-    except ConnectionError:
-        return None
-
-    if response.status_code != 200:
-        return None
-
-    try:
-        return response.json()["message"]["content"]
-    except (KeyError, TypeError, ValueError):
-        return None
+    content, _failure = _post_chat(base_url, payload, timeout)
+    return content
 
 
 def _parse_object_reply(

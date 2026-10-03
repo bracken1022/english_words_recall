@@ -184,6 +184,8 @@
     wordSourceNoteEl.hidden = !canUpload;
     if (canUpload && state.step === "choose") fetchLists();
     else myListsEl.hidden = true;
+    if (canUpload && (state.step === "choose" || state.step === "empty")) fetchImport();
+    else clearTimeout(importPollTimer);
     if (canUpload) {
       wordSourceNoteEl.textContent =
         state.word_source === "own"
@@ -829,8 +831,331 @@
   uploadInput.addEventListener("change", async () => {
     const file = uploadInput.files[0];
     uploadInput.value = "";
-    if (file) await uploadFile(file);
+    if (file) await startImport(file);
   });
+
+  // --- word-list import (spec 018) ----------------------------------------
+  // The upload button now starts an import: the local model fills in each
+  // word's pronunciation, meaning and spelling variants, the learner
+  // reviews them here, and nothing is saved until they press Save
+  // (contracts/import-ui-contract.md). uploadFile above is the spec 016
+  // immediate-save path, kept for its API.
+
+  const importPanelEl = document.getElementById("import-panel");
+  const importNameEl = document.getElementById("import-name");
+  const importStatusEl = document.getElementById("import-status");
+  const importPreviewEl = document.getElementById("import-preview");
+  const importActionsEl = document.getElementById("import-actions");
+  const importProgressEl = el("progress", "import-progress");
+  importStatusEl.after(importProgressEl);
+  let importPollTimer = null;
+  let importBusy = false;
+
+  const IMPORT_COLUMNS = ["English", "IPA", "中文", "Alternates", "Status"];
+  const ITEM_STATUS = {
+    waiting: "Waiting",
+    enriching: "Enriching…",
+    enriched: "Ready",
+    duplicate: "Repeated — already above",
+  };
+
+  function plural(count, word) {
+    return `${count} ${count === 1 ? word : `${word}s`}`;
+  }
+
+  function setUploadDisabled(disabled) {
+    uploadButton.disabled = disabled;
+    emptyUploadButton.disabled = disabled;
+    uploadInput.disabled = disabled;
+  }
+
+  function importStatusText(imp) {
+    switch (imp.status) {
+      case "running":
+        return `Enriching vocabulary: ${imp.done} / ${imp.total}`;
+      case "completed":
+        return `Enrichment complete — review ${plural(imp.total, "word")} below.`;
+      case "partially_failed":
+        return (
+          `${imp.enriched_count} enriched, ${imp.failed_count} failed — ` +
+          "retry the failed words or save the rest."
+        );
+      case "failed":
+        return `${imp.failure_reason || "Enrichment failed."} ${imp.done} / ${imp.total} enriched so far.`;
+      default:
+        return `Enrichment was interrupted at ${imp.done} / ${imp.total}. Press Retry to continue.`;
+    }
+  }
+
+  function importCell(label, ...children) {
+    const td = el("td");
+    td.dataset.label = label;
+    td.append(...children.filter(Boolean));
+    return td;
+  }
+
+  function importIpa(item) {
+    if (item.ipa) {
+      const span = el("span", "ipa", `/${item.ipa}/`);
+      span.lang = "en-US-fonipa";
+      return span;
+    }
+    if (item.ipa_review) {
+      const badge = el("span", "badge-review", "Pronunciation needs review");
+      badge.title = item.ipa_review;
+      return badge;
+    }
+    return el("span", "text-muted", "—");
+  }
+
+  function importChinese(item) {
+    if (!item.chinese) return el("span", "text-muted", "—");
+    const span = el("span", "import-zh", item.chinese);
+    span.lang = "zh-Hans";
+    return span;
+  }
+
+  function importAlternates(item) {
+    if (item.state !== "enriched") return [el("span", "text-muted", "—")];
+    const parts = [el("span", "", item.alternates.length ? item.alternates.join(", ") : "none")];
+    if (item.dropped_alternates.length) {
+      parts.push(
+        el("span", "import-dropped text-muted", `not used: ${item.dropped_alternates.join(", ")}`),
+      );
+    }
+    return parts;
+  }
+
+  function importItemStatus(item, running) {
+    if (item.state === "failed") {
+      return [
+        el("span", "import-failed", `Failed: ${item.error}`),
+        importButton("Retry", "btn-ghost", () => retryImport(item.index), running),
+      ];
+    }
+    return [el("span", "", ITEM_STATUS[item.state] || item.state)];
+  }
+
+  function importExisting(item) {
+    if (!item.existing) return [];
+    const own = item.existing.source === "own";
+    const parts = [
+      el(
+        "span",
+        "badge-existing",
+        own ? `Already in your words (“${item.existing.list}”)` : "Also in the shared words",
+      ),
+    ];
+    const now = [
+      item.existing.ipa ? `/${item.existing.ipa}/` : null,
+      item.existing.chinese,
+      item.existing.alternates.length ? item.existing.alternates.join(", ") : null,
+    ].filter(Boolean);
+    if (now.length) parts.push(el("span", "import-existing-now text-muted", `Now: ${now.join(" · ")}`));
+    if (own && item.state === "enriched") {
+      const choice = el("div", "import-choice");
+      for (const [value, label] of [["keep", "Keep mine"], ["update", "Update with this"]]) {
+        const input = el("input");
+        input.type = "radio";
+        input.name = `import-choice-${item.index}`;
+        input.value = value;
+        input.checked = item.choice === value;
+        input.addEventListener("change", () => chooseImport(item.index, value));
+        const option = el("label");
+        option.append(input, label);
+        choice.append(option);
+      }
+      parts.push(choice);
+    }
+    return parts;
+  }
+
+  function importRow(item, running) {
+    const row = el("tr", `import-row import-row--${item.state}`);
+    row.append(
+      importCell("English", el("span", "import-english", item.english), ...importExisting(item)),
+      importCell("IPA", importIpa(item)),
+      importCell("中文", importChinese(item)),
+      importCell("Alternates", ...importAlternates(item)),
+      importCell("Status", ...importItemStatus(item, running)),
+    );
+    return row;
+  }
+
+  function renderImportPreview(imp, running) {
+    const head = el("tr");
+    for (const title of IMPORT_COLUMNS) head.append(el("th", "", title));
+    const thead = el("thead");
+    thead.append(head);
+    const tbody = el("tbody");
+    for (const item of imp.items) tbody.append(importRow(item, running));
+    const table = el("table", "import-table");
+    table.append(thead, tbody);
+    importPreviewEl.replaceChildren(table);
+  }
+
+  function importButton(label, className, onClick, disabled = false) {
+    const button = el("button", `btn ${className}`, label);
+    button.type = "button";
+    button.disabled = disabled;
+    button.addEventListener("click", onClick);
+    return button;
+  }
+
+  function renderImportActions(imp, running) {
+    const updates = imp.items.filter(
+      (i) => i.state === "enriched" && i.existing && i.existing.source === "own" && i.choice === "update",
+    ).length;
+    const leftOut = imp.total - imp.savable_count - updates;
+    const buttons = [];
+    if (running || imp.savable_count > 0 || updates > 0) {
+      let label = `Save ${plural(imp.savable_count, "word")}`;
+      // While enriching, unfinished words aren't "left out" yet.
+      if (leftOut > 0 && !running) label += ` — ${leftOut} left out`;
+      buttons.push(importButton(label, "btn-primary", () => confirmImport(), running));
+    }
+    if (imp.failed_count > 0 || imp.status === "failed" || imp.status === "interrupted") {
+      buttons.push(importButton("Retry failed", "btn-secondary", () => retryImport(), running));
+    }
+    buttons.push(importButton("Discard", "btn-ghost", discardImport));
+    importActionsEl.replaceChildren(...buttons);
+  }
+
+  function placeImportPanel() {
+    // The panel lives in the upload area; on the "no words" screen it is
+    // shown there instead, so an import started from it stays visible.
+    if (currentState && currentState.step === "empty") {
+      if (importPanelEl.parentNode !== views.empty) views.empty.append(importPanelEl);
+    } else if (importPanelEl.previousElementSibling !== uploadResultEl) {
+      uploadResultEl.after(importPanelEl);
+    }
+  }
+
+  function renderImport(imp) {
+    clearTimeout(importPollTimer);
+    if (!imp) {
+      importPanelEl.hidden = true;
+      setUploadDisabled(false);
+      return;
+    }
+    const running = imp.status === "running";
+    placeImportPanel();
+    importPanelEl.hidden = false;
+    importNameEl.textContent = imp.list_name || imp.source_filename;
+    setUploadDisabled(running);
+    importStatusEl.textContent = importStatusText(imp);
+    importStatusEl.classList.toggle("import-status--error", imp.status === "failed");
+    importProgressEl.hidden = !running;
+    importProgressEl.max = Math.max(imp.total, 1);
+    importProgressEl.value = imp.done;
+    renderImportPreview(imp, running);
+    renderImportActions(imp, running);
+    if (running) importPollTimer = setTimeout(pollImport, 1000);
+  }
+
+  async function fetchImport() {
+    const resp = await api("/api/word-lists/import");
+    if (!resp) return;
+    renderImport((await resp.json()).import);
+  }
+
+  function pollImport() {
+    if (currentState && (currentState.step === "choose" || currentState.step === "empty")) {
+      fetchImport();
+    }
+  }
+
+  async function startImport(file, discardPending = false) {
+    const form = new FormData();
+    form.append("file", file);
+    if (discardPending) form.append("discard_pending", "true");
+    const resp = await api("/api/word-lists/import", { method: "POST", body: form });
+    if (!resp) return;
+    const data = await resp.json();
+    if (resp.status === 409 && data.pending) {
+      const name = data.import.source_filename;
+      if (confirm(`You have an unfinished import of “${name}”. Discard it and start this one?`)) {
+        await startImport(file, true);
+      }
+      return;
+    }
+    if (!resp.ok) {
+      if (!currentState || currentState.step !== "choose") alert(data.error);
+      else showUploadResult([data.error], true, data.skipped || []);
+      return;
+    }
+    uploadResultEl.hidden = true;
+    renderImport(data.import);
+  }
+
+  async function retryImport(index) {
+    if (importBusy) return;
+    importBusy = true;
+    try {
+      const resp = await postJson(
+        "/api/word-lists/import/retry",
+        index === undefined ? {} : { index },
+      );
+      if (!resp) return;
+      const data = await resp.json();
+      if (!resp.ok) {
+        showUploadResult([data.error], true);
+        await fetchImport();
+        return;
+      }
+      renderImport(data.import);
+    } finally {
+      importBusy = false;
+    }
+  }
+
+  async function confirmImport(replace = false) {
+    if (importBusy) return;
+    importBusy = true;
+    let retryWithReplace = false;
+    try {
+      const resp = await postJson("/api/word-lists/import/confirm", replace ? { replace: true } : {});
+      if (!resp) return;
+      const data = await resp.json();
+      if (resp.status === 409 && data.exists) {
+        retryWithReplace = confirm(`Replace your list “${data.name}”?`);
+        return;
+      }
+      if (!resp.ok) {
+        showUploadResult([data.error], true);
+        await fetchImport();
+        return;
+      }
+      renderImport(null);
+      await fetchState();
+      const lines = [`Added ${plural(data.added, "word")} to “${data.name}”.`];
+      if (data.updated > 0) lines.push(`Updated ${plural(data.updated, "existing word")}.`);
+      if (data.left_out > 0) lines.push(`Left out ${data.left_out}.`);
+      if (data.first_list) lines.push("From now on you'll practice your own lists.");
+      if (!data.applies_now) {
+        lines.push("New lists show up when the tutor isn't locked to one word set.");
+      }
+      showUploadResult(lines, false);
+    } finally {
+      importBusy = false;
+    }
+    if (retryWithReplace) await confirmImport(true);
+  }
+
+  async function chooseImport(index, choice) {
+    const resp = await postJson("/api/word-lists/import/choice", { index, choice });
+    if (!resp) return;
+    const data = await resp.json();
+    if (resp.ok) renderImport(data.import);
+    else await fetchImport();
+  }
+
+  async function discardImport() {
+    if (!confirm("Discard this import? Nothing will be saved.")) return;
+    const resp = await api("/api/word-lists/import", { method: "DELETE" });
+    if (!resp) return;
+    renderImport(null);
+  }
 
   // --- login (spec 015) -----------------------------------------------------
 

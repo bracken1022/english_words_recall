@@ -174,3 +174,80 @@ def test_markdown_invalid_ipa_keeps_word_with_message():
 def test_no_pronunciation_is_invented():
     item = _simple("receive, 收到, accept").items[0]
     assert item.ipa is None
+
+
+# --- spec 018: parse_upload(require_chinese=False) -> DraftWord ------------
+
+from src.services.word_lists import DraftWord
+
+
+def _drafts(text: str, name: str = "z-words.txt"):
+    return parse_upload(name, text.encode("utf-8"), require_chinese=False)
+
+
+def test_bare_english_lines_become_drafts():
+    parsed = _drafts("zealous\ntyre\n")
+    assert parsed.skipped == []
+    assert parsed.items == [
+        DraftWord("zealous", None, None, [], "line 1"),
+        DraftWord("tyre", None, None, [], "line 2"),
+    ]
+
+
+def test_supplied_fields_are_kept_on_drafts():
+    parsed = _drafts("receive, 收到；接受, /rɪˈsiːv/, accept")
+    draft = parsed.items[0]
+    assert draft.chinese == "收到；接受"
+    assert draft.ipa == "rɪˈsiːv"
+    assert draft.alternates == ["accept"]
+
+
+def test_pronunciation_in_field_two_is_not_chinese():
+    draft = _drafts("receive, /rɪˈsiːv/").items[0]
+    assert draft.chinese is None
+    assert draft.ipa == "rɪˈsiːv"
+
+
+def test_draft_english_is_only_trimmed():
+    assert _drafts("  Hello!  ").items[0].english == "Hello!"
+
+
+def test_draft_line_without_english_is_still_skipped():
+    parsed = _drafts(", 收到\nzealous\n")
+    assert [d.english for d in parsed.items] == ["zealous"]
+    assert parsed.skipped == ["line 1: no English word"]
+
+
+def test_draft_header_row_skipped():
+    parsed = _drafts("English, Chinese\nzealous\n")
+    assert [d.english for d in parsed.items] == ["zealous"]
+
+
+def test_markdown_block_without_chinese_becomes_draft():
+    text = "---\nenglish: zealous\n---\n\n---\nchinese: 收到\n---\n"
+    parsed = _drafts(text, "z.md")
+    assert parsed.items == [DraftWord("zealous", None, None, [], "block 1")]
+    assert parsed.skipped == ["block 2: missing 'english'"]
+
+
+def test_markdown_draft_bad_alternates_skipped():
+    parsed = _drafts("---\nenglish: zealous\nalternates: keen\n---\n", "z.md")
+    assert parsed.items == []
+    assert parsed.skipped == ["block 1: alternates must be a list of words"]
+
+
+def test_markdown_draft_ignores_group_and_keeps_fields():
+    text = "---\nenglish: receive\nipa: /rɪˈsiːv/\nalternates: [accept]\nchinese: 收到\ngroup: x\n---\n"
+    draft = _drafts(text, "z.md").items[0]
+    assert draft == DraftWord("receive", "收到", "rɪˈsiːv", ["accept"], "block 1")
+
+
+def test_draft_word_limit_still_applies():
+    with pytest.raises(UploadFormatError):
+        _drafts("w\n" * 5001)
+
+
+def test_default_still_requires_chinese():
+    parsed = _simple("zealous\nreceive, 收到\n")
+    assert [i.english for i in parsed.items] == ["receive"]
+    assert parsed.skipped == ["line 1: no Chinese meaning"]

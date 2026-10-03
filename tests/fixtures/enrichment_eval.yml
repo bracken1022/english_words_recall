@@ -1,0 +1,96 @@
+# Reviewed evaluation set for local-AI enrichment (spec 018, research R10).
+# It is used by `python -m src.tools.eval_enrichment`, which needs a running
+# Ollama, so pytest does not run it.
+# IPA follows the Oxford Learner's Dictionaries NAmE style (see
+# american_ipa.yml). `ipa_also` lists other American pronunciations that
+# Merriam-Webster attests for the word (added 2026-10-03, when the IPA
+# source became the CMU dictionary). `chinese_any` lists accepted core
+# glosses: an answer counts if any one of them appears inside one of its
+# "；" parts.
+# Reviewed 2026-10-03.
+words:
+  - {english: zealous, ipa: ˈzeləs, chinese_any: [热心, 热情, 狂热]}
+  - {english: receive, ipa: rɪˈsiːv, chinese_any: [收到, 接到, 接受]}
+  - {english: arduous, ipa: ˈɑːrdʒuəs, chinese_any: [艰巨, 艰苦, 费力, 艰难]}
+  - {english: diligent, ipa: ˈdɪlɪdʒənt, chinese_any: [勤奋, 勤勉, 勤劳]}
+  - {english: abundant, ipa: əˈbʌndənt, chinese_any: [丰富, 充足, 大量, 充裕]}
+  - {english: ambiguous, ipa: æmˈbɪɡjuəs, chinese_any: [模棱两可, 含糊, 歧义, 不明确]}
+  - {english: curious, ipa: ˈkjʊriəs, chinese_any: [好奇, 奇怪, 奇特]}
+  - {english: honest, ipa: ˈɑːnɪst, chinese_any: [诚实, 正直, 老实]}
+  - {english: schedule, ipa: ˈskedʒuːl, ipa_also: [ˈskedʒʊl, ˈskedʒəl], chinese_any: [日程, 时间表, 计划, 安排]}
+  - {english: garage, ipa: ɡəˈrɑːʒ, chinese_any: [车库, 修车]}
+  - {english: leisure, ipa: ˈliːʒər, ipa_also: [ˈleʒər], chinese_any: [空闲, 闲暇, 休闲, 业余]}
+  - {english: figure, ipa: ˈfɪɡjər, chinese_any: [数字, 人物, 身材, 图形, 认为]}
+  - {english: neighbor, ipa: ˈneɪbər, chinese_any: [邻居, 邻人]}
+  - {english: coffee, ipa: ˈkɔːfi, chinese_any: [咖啡]}
+  - {english: water, ipa: ˈwɔːtər, chinese_any: [水, 浇水]}
+  - {english: bird, ipa: bɜːrd, chinese_any: [鸟]}
+  - {english: thought, ipa: θɔːt, chinese_any: [想法, 思想, 思考, 念头]}
+  - {english: forward, ipa: ˈfɔːrwərd, chinese_any: [向前, 前进, 转发, 前方]}
+  - {english: hurry, ipa: ˈhɜːri, chinese_any: [匆忙, 赶紧, 急忙]}
+  - {english: vitamin, ipa: ˈvaɪtəmɪn, chinese_any: [维生素]}
+  - {english: tomato, ipa: təˈmeɪtoʊ, chinese_any: [番茄, 西红柿]}
+  - {english: either, ipa: ˈiːðər, chinese_any: [任何一个, 两者之一, 也, 任一]}
+  - {english: nation, ipa: ˈneɪʃn, chinese_any: [国家, 民族]}
+  - {english: often, ipa: ˈɔːfn, chinese_any: [经常, 常常, 时常]}
+  - {english: epitomize, ipa: ɪˈpɪtəmaɪz, chinese_any: [典范, 典型, 体现, 缩影]}
+  - {english: meticulous, ipa: məˈtɪkjələs, chinese_any: [一丝不苟, 细致, 谨慎, 小心]}
+  - {english: resilient, ipa: rɪˈzɪliənt, ipa_also: [rɪˈzɪljənt], chinese_any: [弹性, 适应力, 复原, 坚韧, 恢复]}
+  - {english: inevitable, ipa: ɪnˈevɪtəbl, chinese_any: [不可避免, 必然]}
+  - {english: eloquent, ipa: ˈeləkwənt, chinese_any: [雄辩, 有说服力, 口才, 能说会道]}
+  - {english: reluctant, ipa: rɪˈlʌktənt, chinese_any: [不情愿, 勉强]}
+  - {english: substantial, ipa: səbˈstænʃl, chinese_any: [大量, 重大, 可观, 实质]}
+  - {english: temporary, ipa: ˈtempəreri, chinese_any: [暂时, 临时]}
+  - {english: library, ipa: ˈlaɪbreri, chinese_any: [图书馆]}
+  - {english: February, ipa: ˈfebrueri, ipa_also: [ˈfebjəweri, ˈfebjueri], chinese_any: [二月]}
+  - {english: anxious, ipa: ˈæŋkʃəs, chinese_any: [焦虑, 担心, 渴望, 忧虑]}
+  - {english: genuine, ipa: ˈdʒenjuɪn, chinese_any: [真正, 真诚, 真实]}
+  - {english: hierarchy, ipa: ˈhaɪərɑːrki, chinese_any: [等级, 层级]}
+  - {english: pursue, ipa: pərˈsuː, chinese_any: [追求, 从事, 追赶, 追逐]}
+  - {english: career, ipa: kəˈrɪr, chinese_any: [职业, 生涯, 事业]}
+  - {english: squirrel, ipa: ˈskwɜːrəl, chinese_any: [松鼠]}
+  - {english: mirror, ipa: ˈmɪrər, chinese_any: [镜子, 反映]}
+  - {english: answer, ipa: ˈænsər, chinese_any: [回答, 答案, 答复]}
+  - {english: dance, ipa: dæns, chinese_any: [跳舞, 舞蹈]}
+  - {english: privacy, ipa: ˈpraɪvəsi, chinese_any: [隐私, 私密]}
+  - {english: advertisement, ipa: ˌædvərˈtaɪzmənt, chinese_any: [广告]}
+  - {english: give up, ipa: ˌɡɪv ˈʌp, chinese_any: [放弃]}
+  - {english: look forward to, ipa: ˌlʊk ˈfɔːrwərd tə, chinese_any: [期待, 盼望]}
+  - {english: take off, ipa: ˌteɪk ˈɔːf, chinese_any: [起飞, 脱下, 脱掉]}
+  - {english: make up for, ipa: ˌmeɪk ˈʌp fər, chinese_any: [弥补, 补偿]}
+  - {english: tend to, ipa: ˈtend tə, chinese_any: [倾向, 往往]}
+heteronyms: [record, present, object, lead, tear, wind, live, minute]
+traps:
+  - {english: arduous, forbidden: [difficult, hard, tough]}
+  - {english: zealous, forbidden: [enthusiastic, eager, passionate]}
+  - {english: big, forbidden: [large, huge]}
+  - {english: begin, forbidden: [start, commence]}
+  - {english: rapid, forbidden: [fast, quick, swift]}
+  - {english: affect, forbidden: [effect, influence]}
+  - {english: accept, forbidden: [except, receive]}
+  - {english: diligent, forbidden: [hardworking, industrious]}
+  - {english: abundant, forbidden: [plentiful, ample]}
+  - {english: reluctant, forbidden: [unwilling, hesitant]}
+  - {english: anxious, forbidden: [worried, nervous]}
+  - {english: genuine, forbidden: [real, authentic]}
+  - {english: often, forbidden: [frequently, usually]}
+  - {english: receive, forbidden: [get, obtain, accept]}
+  - {english: honest, forbidden: [truthful, sincere]}
+  - {english: temporary, forbidden: [short, brief, provisional]}
+  - {english: pursue, forbidden: [chase, follow]}
+  - {english: answer, forbidden: [reply, response]}
+  - {english: eloquent, forbidden: [fluent, articulate]}
+  - {english: meticulous, forbidden: [careful, thorough]}
+  - {english: give up, forbidden: [quit, abandon]}
+variants:
+  - {english: tyre, expected: tire}
+  - {english: epitomise, expected: epitomize}
+  - {english: colour, expected: color}
+  - {english: centre, expected: center}
+  - {english: grey, expected: gray}
+  - {english: travelled, expected: traveled}
+  - {english: analyse, expected: analyze}
+  - {english: programme, expected: program}
+  - {english: defence, expected: defense}
+  - {english: organisation, expected: organization}
+  - {english: catalogue, expected: catalog}
