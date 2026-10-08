@@ -7,58 +7,71 @@
 # source became the CMU dictionary). `chinese_any` lists accepted core
 # glosses: an answer counts if any one of them appears inside one of its
 # "；" parts.
-# Reviewed 2026-10-03.
+# Reviewed 2026-10-03. `pos` / `pos_ok` added 2026-10-05 (spec 019 R6):
+# a reply's labels must all be in pos ∪ pos_ok and include one of pos.
 words:
-  - {english: zealous, ipa: ˈzeləs, chinese_any: [热心, 热情, 狂热]}
-  - {english: receive, ipa: rɪˈsiːv, chinese_any: [收到, 接到, 接受]}
-  - {english: arduous, ipa: ˈɑːrdʒuəs, chinese_any: [艰巨, 艰苦, 费力, 艰难]}
-  - {english: diligent, ipa: ˈdɪlɪdʒənt, chinese_any: [勤奋, 勤勉, 勤劳]}
-  - {english: abundant, ipa: əˈbʌndənt, chinese_any: [丰富, 充足, 大量, 充裕]}
-  - {english: ambiguous, ipa: æmˈbɪɡjuəs, chinese_any: [模棱两可, 含糊, 歧义, 不明确]}
-  - {english: curious, ipa: ˈkjʊriəs, chinese_any: [好奇, 奇怪, 奇特]}
-  - {english: honest, ipa: ˈɑːnɪst, chinese_any: [诚实, 正直, 老实]}
-  - {english: schedule, ipa: ˈskedʒuːl, ipa_also: [ˈskedʒʊl, ˈskedʒəl], chinese_any: [日程, 时间表, 计划, 安排]}
-  - {english: garage, ipa: ɡəˈrɑːʒ, chinese_any: [车库, 修车]}
-  - {english: leisure, ipa: ˈliːʒər, ipa_also: [ˈleʒər], chinese_any: [空闲, 闲暇, 休闲, 业余]}
-  - {english: figure, ipa: ˈfɪɡjər, chinese_any: [数字, 人物, 身材, 图形, 认为]}
-  - {english: neighbor, ipa: ˈneɪbər, chinese_any: [邻居, 邻人]}
-  - {english: coffee, ipa: ˈkɔːfi, chinese_any: [咖啡]}
-  - {english: water, ipa: ˈwɔːtər, chinese_any: [水, 浇水]}
-  - {english: bird, ipa: bɜːrd, chinese_any: [鸟]}
-  - {english: thought, ipa: θɔːt, chinese_any: [想法, 思想, 思考, 念头]}
-  - {english: forward, ipa: ˈfɔːrwərd, chinese_any: [向前, 前进, 转发, 前方]}
-  - {english: hurry, ipa: ˈhɜːri, chinese_any: [匆忙, 赶紧, 急忙]}
-  - {english: vitamin, ipa: ˈvaɪtəmɪn, chinese_any: [维生素]}
-  - {english: tomato, ipa: təˈmeɪtoʊ, chinese_any: [番茄, 西红柿]}
-  - {english: either, ipa: ˈiːðər, chinese_any: [任何一个, 两者之一, 也, 任一]}
-  - {english: nation, ipa: ˈneɪʃn, chinese_any: [国家, 民族]}
-  - {english: often, ipa: ˈɔːfn, chinese_any: [经常, 常常, 时常]}
-  - {english: epitomize, ipa: ɪˈpɪtəmaɪz, chinese_any: [典范, 典型, 体现, 缩影]}
-  - {english: meticulous, ipa: məˈtɪkjələs, chinese_any: [一丝不苟, 细致, 谨慎, 小心]}
-  - {english: resilient, ipa: rɪˈzɪliənt, ipa_also: [rɪˈzɪljənt], chinese_any: [弹性, 适应力, 复原, 坚韧, 恢复]}
-  - {english: inevitable, ipa: ɪnˈevɪtəbl, chinese_any: [不可避免, 必然]}
-  - {english: eloquent, ipa: ˈeləkwənt, chinese_any: [雄辩, 有说服力, 口才, 能说会道]}
-  - {english: reluctant, ipa: rɪˈlʌktənt, chinese_any: [不情愿, 勉强]}
-  - {english: substantial, ipa: səbˈstænʃl, chinese_any: [大量, 重大, 可观, 实质]}
-  - {english: temporary, ipa: ˈtempəreri, chinese_any: [暂时, 临时]}
-  - {english: library, ipa: ˈlaɪbreri, chinese_any: [图书馆]}
-  - {english: February, ipa: ˈfebrueri, ipa_also: [ˈfebjəweri, ˈfebjueri], chinese_any: [二月]}
-  - {english: anxious, ipa: ˈæŋkʃəs, chinese_any: [焦虑, 担心, 渴望, 忧虑]}
-  - {english: genuine, ipa: ˈdʒenjuɪn, chinese_any: [真正, 真诚, 真实]}
-  - {english: hierarchy, ipa: ˈhaɪərɑːrki, chinese_any: [等级, 层级]}
-  - {english: pursue, ipa: pərˈsuː, chinese_any: [追求, 从事, 追赶, 追逐]}
-  - {english: career, ipa: kəˈrɪr, chinese_any: [职业, 生涯, 事业]}
-  - {english: squirrel, ipa: ˈskwɜːrəl, chinese_any: [松鼠]}
-  - {english: mirror, ipa: ˈmɪrər, chinese_any: [镜子, 反映]}
-  - {english: answer, ipa: ˈænsər, chinese_any: [回答, 答案, 答复]}
-  - {english: dance, ipa: dæns, chinese_any: [跳舞, 舞蹈]}
-  - {english: privacy, ipa: ˈpraɪvəsi, chinese_any: [隐私, 私密]}
-  - {english: advertisement, ipa: ˌædvərˈtaɪzmənt, chinese_any: [广告]}
-  - {english: give up, ipa: ˌɡɪv ˈʌp, chinese_any: [放弃]}
-  - {english: look forward to, ipa: ˌlʊk ˈfɔːrwərd tə, chinese_any: [期待, 盼望]}
-  - {english: take off, ipa: ˌteɪk ˈɔːf, chinese_any: [起飞, 脱下, 脱掉]}
-  - {english: make up for, ipa: ˌmeɪk ˈʌp fər, chinese_any: [弥补, 补偿]}
-  - {english: tend to, ipa: ˈtend tə, chinese_any: [倾向, 往往]}
+  - {english: zealous, ipa: ˈzeləs, chinese_any: [热心, 热情, 狂热], pos: [adj.]}
+  - {english: receive, ipa: rɪˈsiːv, chinese_any: [收到, 接到, 接受], pos: [v.]}
+  - {english: arduous, ipa: ˈɑːrdʒuəs, chinese_any: [艰巨, 艰苦, 费力, 艰难], pos: [adj.]}
+  - {english: diligent, ipa: ˈdɪlɪdʒənt, chinese_any: [勤奋, 勤勉, 勤劳], pos: [adj.]}
+  - {english: abundant, ipa: əˈbʌndənt, chinese_any: [丰富, 充足, 大量, 充裕], pos: [adj.]}
+  - {english: ambiguous, ipa: æmˈbɪɡjuəs, chinese_any: [模棱两可, 含糊, 歧义, 不明确], pos: [adj.]}
+  - {english: curious, ipa: ˈkjʊriəs, chinese_any: [好奇, 奇怪, 奇特], pos: [adj.]}
+  - {english: honest, ipa: ˈɑːnɪst, chinese_any: [诚实, 正直, 老实], pos: [adj.]}
+  - {english: schedule, ipa: ˈskedʒuːl, ipa_also: [ˈskedʒʊl, ˈskedʒəl], chinese_any: [日程, 时间表, 计划, 安排], pos: [n.], pos_ok: [v.]}
+  - {english: garage, ipa: ɡəˈrɑːʒ, chinese_any: [车库, 修车], pos: [n.]}
+  - {english: leisure, ipa: ˈliːʒər, ipa_also: [ˈleʒər], chinese_any: [空闲, 闲暇, 休闲, 业余], pos: [n.], pos_ok: [adj.]}
+  - {english: figure, ipa: ˈfɪɡjər, chinese_any: [数字, 人物, 身材, 图形, 认为], pos: [n.], pos_ok: [v.]}
+  - {english: neighbor, ipa: ˈneɪbər, chinese_any: [邻居, 邻人], pos: [n.]}
+  - {english: coffee, ipa: ˈkɔːfi, chinese_any: [咖啡], pos: [n.]}
+  - {english: water, ipa: ˈwɔːtər, chinese_any: [水, 浇水], pos: [n.], pos_ok: [v.]}
+  - {english: bird, ipa: bɜːrd, chinese_any: [鸟], pos: [n.]}
+  - {english: thought, ipa: θɔːt, chinese_any: [想法, 思想, 思考, 念头], pos: [n.], pos_ok: [v.]}
+  - {english: forward, ipa: ˈfɔːrwərd, chinese_any: [向前, 前进, 转发, 前方], pos: [adv.], pos_ok: [adj., v., n.]}
+  - {english: hurry, ipa: ˈhɜːri, chinese_any: [匆忙, 赶紧, 急忙], pos: [v.], pos_ok: [n.]}
+  - {english: vitamin, ipa: ˈvaɪtəmɪn, chinese_any: [维生素], pos: [n.]}
+  - {english: tomato, ipa: təˈmeɪtoʊ, chinese_any: [番茄, 西红柿], pos: [n.]}
+  - {english: either, ipa: ˈiːðər, chinese_any: [任何一个, 两者之一, 也, 任一], pos: [det., pron., adv., conj.]}
+  - {english: nation, ipa: ˈneɪʃn, chinese_any: [国家, 民族], pos: [n.]}
+  - {english: often, ipa: ˈɔːfn, chinese_any: [经常, 常常, 时常], pos: [adv.]}
+  - {english: epitomize, ipa: ɪˈpɪtəmaɪz, chinese_any: [典范, 典型, 体现, 缩影], pos: [v.]}
+  - {english: meticulous, ipa: məˈtɪkjələs, chinese_any: [一丝不苟, 细致, 谨慎, 小心], pos: [adj.]}
+  - {english: resilient, ipa: rɪˈzɪliənt, ipa_also: [rɪˈzɪljənt], chinese_any: [弹性, 适应力, 复原, 坚韧, 恢复], pos: [adj.]}
+  - {english: inevitable, ipa: ɪnˈevɪtəbl, chinese_any: [不可避免, 必然], pos: [adj.], pos_ok: [n.]}
+  - {english: eloquent, ipa: ˈeləkwənt, chinese_any: [雄辩, 有说服力, 口才, 能说会道], pos: [adj.]}
+  - {english: reluctant, ipa: rɪˈlʌktənt, chinese_any: [不情愿, 勉强], pos: [adj.]}
+  - {english: substantial, ipa: səbˈstænʃl, chinese_any: [大量, 重大, 可观, 实质], pos: [adj.]}
+  - {english: temporary, ipa: ˈtempəreri, chinese_any: [暂时, 临时], pos: [adj.], pos_ok: [n.]}
+  - {english: library, ipa: ˈlaɪbreri, chinese_any: [图书馆], pos: [n.]}
+  - {english: February, ipa: ˈfebrueri, ipa_also: [ˈfebjəweri, ˈfebjueri], chinese_any: [二月], pos: [n.]}
+  - {english: anxious, ipa: ˈæŋkʃəs, chinese_any: [焦虑, 担心, 渴望, 忧虑], pos: [adj.]}
+  - {english: genuine, ipa: ˈdʒenjuɪn, chinese_any: [真正, 真诚, 真实], pos: [adj.]}
+  - {english: hierarchy, ipa: ˈhaɪərɑːrki, chinese_any: [等级, 层级], pos: [n.]}
+  - {english: pursue, ipa: pərˈsuː, chinese_any: [追求, 从事, 追赶, 追逐], pos: [v.]}
+  - {english: career, ipa: kəˈrɪr, chinese_any: [职业, 生涯, 事业], pos: [n.], pos_ok: [v., adj.]}
+  - {english: squirrel, ipa: ˈskwɜːrəl, chinese_any: [松鼠], pos: [n.], pos_ok: [v.]}
+  - {english: mirror, ipa: ˈmɪrər, chinese_any: [镜子, 反映], pos: [n.], pos_ok: [v.]}
+  - {english: answer, ipa: ˈænsər, chinese_any: [回答, 答案, 答复], pos: [n., v.]}
+  - {english: dance, ipa: dæns, chinese_any: [跳舞, 舞蹈], pos: [v., n.]}
+  - {english: privacy, ipa: ˈpraɪvəsi, chinese_any: [隐私, 私密], pos: [n.]}
+  - {english: advertisement, ipa: ˌædvərˈtaɪzmənt, chinese_any: [广告], pos: [n.]}
+  - {english: give up, ipa: ˌɡɪv ˈʌp, chinese_any: [放弃], pos: [phr. v.], pos_ok: [v., phr.]}
+  - {english: look forward to, ipa: ˌlʊk ˈfɔːrwərd tə, chinese_any: [期待, 盼望], pos: [phr. v.], pos_ok: [v., phr.]}
+  - {english: take off, ipa: ˌteɪk ˈɔːf, chinese_any: [起飞, 脱下, 脱掉], pos: [phr. v.], pos_ok: [v., phr.]}
+  - {english: make up for, ipa: ˌmeɪk ˈʌp fər, chinese_any: [弥补, 补偿], pos: [phr. v.], pos_ok: [v., phr.]}
+  - {english: tend to, ipa: ˈtend tə, chinese_any: [倾向, 往往], pos: [phr. v.], pos_ok: [v., phr.]}
+  # Words used in more than one class (spec 019 R6): `pos` must be present,
+  # `pos_ok` is also acceptable.
+  - {english: rent, ipa: rent, chinese_any: [租金, 租用, 出租, 租], pos: [n., v.]}
+  - {english: record, ipa: ˈrekərd, ipa_also: [rɪˈkɔːrd], chinese_any: [记录, 唱片, 纪录], pos: [n., v.], pos_ok: [adj.]}
+  - {english: present, ipa: ˈpreznt, ipa_also: [prɪˈzent], chinese_any: [礼物, 现在, 出席, 呈现, 提出, 赠送, 目前], pos: [n., adj., v.]}
+  - {english: increase, ipa: ɪnˈkriːs, ipa_also: [ˈɪŋkriːs], chinese_any: [增加, 增长, 增多], pos: [v., n.]}
+  - {english: light, ipa: laɪt, chinese_any: [光, 灯, 轻, 明亮, 点燃, 浅], pos: [n., adj., v.]}
+  - {english: contract, ipa: ˈkɑːntrækt, ipa_also: [kənˈtrækt], chinese_any: [合同, 契约, 收缩, 签约, 感染], pos: [n., v.]}
+  - {english: project, ipa: ˈprɑːdʒekt, ipa_also: [prəˈdʒekt], chinese_any: [项目, 工程, 计划, 投射, 预测, 投影], pos: [n., v.]}
+  - {english: open, ipa: ˈoʊpən, chinese_any: [打开, 开放, 开着, 公开], pos: [v., adj.], pos_ok: [n.]}
+  - {english: watch, ipa: wɑːtʃ, chinese_any: [手表, 观看, 注视, 看, 监视], pos: [v., n.]}
+  - {english: fast, ipa: fæst, chinese_any: [快, 迅速, 斋戒, 禁食, 牢固], pos: [adj., adv.], pos_ok: [n., v.]}
 heteronyms: [record, present, object, lead, tear, wind, live, minute]
 traps:
   - {english: arduous, forbidden: [difficult, hard, tough]}

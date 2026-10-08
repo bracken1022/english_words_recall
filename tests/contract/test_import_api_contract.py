@@ -46,14 +46,18 @@ class FakeOllama:
     def __init__(self, replies=None):
         self.replies = dict(REPLIES if replies is None else replies)
         self.words: list[str] = []
+        self.pos_words: list[str] = []
 
     def __call__(self, url, json=None, timeout=None):
         user = json["messages"][-1]["content"]
         word = re.search(r'English: "(.*)"', user).group(1)
-        self.words.append(word)
+        is_pos_request = json["format"]["required"] == ["pos"]  # spec 019
+        (self.pos_words if is_pos_request else self.words).append(word)
         reply = self.replies[word]
         if callable(reply):
             reply = reply()
+        if is_pos_request and isinstance(reply, dict):
+            reply = {"pos": reply.get("pos", [])}
         if isinstance(reply, Exception):
             raise reply
         if isinstance(reply, _FakeResponse):
@@ -647,3 +651,80 @@ def test_review_items_are_saved_without_ipa(tmp_path, ollama):
     client.post("/api/select", json={"collection": "z-words", "mode": "recall-only"})
     client.post("/api/answer", json={"answer": "record"})
     assert client.get("/api/state").get_json()["ipa"] is None
+
+
+# --- spec 019: part of speech in imports ---------------------------------------
+
+POS = {"zealous": ["adj."], "rent": ["n.", "v."], "receive": ["v."]}
+
+
+def _with_pos(ollama):
+    ollama.replies["rent"] = {"chinese": "租金；出租", "alternates": []}
+    for word, labels in POS.items():
+        ollama.replies[word] = {**ollama.replies[word], "pos": labels}
+
+
+def test_preview_and_saved_list_carry_pos(tmp_path, ollama):
+    _with_pos(ollama)
+    ollama.replies["tyre"] = {**ollama.replies["tyre"], "pos": ["verbish"]}
+    app = make_app(tmp_path)
+    client = login(app)
+    start_import(client, "zealous\nrent\ntyre\n")
+    finish(app, tmp_path)
+    zealous, rent, tyre = imported(client)["items"]
+    assert (zealous["pos"], zealous["pos_review"]) == (["adj."], None)
+    assert rent["pos"] == ["n."]  # the model's first label only
+    assert (tyre["pos"], tyre["pos_review"]) == ([], "part of speech needs review")
+
+    client.post("/api/word-lists/import/confirm", json={})
+    path = tmp_path / "word-lists" / "lily" / "z-words.md"
+    saved = blocks(path)
+    assert list(saved[1]) == ["english", "ipa", "pos", "alternates", "chinese", "group"]
+    assert saved[1]["pos"] == ["n."]
+    assert "pos" not in saved[2]
+    assert "pos: [n.]" in path.read_text(encoding="utf-8")
+
+
+def test_update_existing_entry_replaces_pos(tmp_path, ollama):
+    unit1 = _with_unit1(tmp_path)
+    ollama.replies["receive"] = {"chinese": "接收；收到", "pos": ["v."], "alternates": []}
+    app = make_app(tmp_path)
+    client = login(app)
+    start_import(client, "receive\n")
+    finish(app, tmp_path)
+    assert "pos" not in imported(client)["items"][0]["existing"]
+    client.post("/api/word-lists/import/choice", json={"index": 0, "choice": "update"})
+    client.post("/api/word-lists/import/confirm", json={})
+    assert blocks(unit1)[0]["pos"] == ["v."]
+
+
+def test_update_with_empty_pos_removes_key(tmp_path, ollama):
+    folder = tmp_path / "word-lists" / "lily"
+    folder.mkdir(parents=True)
+    unit1 = folder / "unit1.md"
+    unit1.write_text(
+        "---\nenglish: receive\npos: [n.]\nchinese: 收到\ngroup: unit1\n---\n", encoding="utf-8"
+    )
+    client = _import_receive(tmp_path, ollama, text="receive\n")
+    client.post("/api/word-lists/import/choice", json={"index": 0, "choice": "update"})
+    client.post("/api/word-lists/import/confirm", json={})
+    assert "pos" not in blocks(unit1)[0]
+
+
+def test_pending_file_without_pos_still_loads(tmp_path):
+    folder = tmp_path / "word-lists" / "lily"
+    folder.mkdir(parents=True)
+    (folder / ".pending-import.json").write_text(
+        json.dumps(
+            {
+                "version": 1, "list_name": "z", "source_filename": "z.txt",
+                "created_at": "2026-10-03T00:00:00+00:00", "status": "completed",
+                "failure_reason": None, "upload_skipped": [],
+                "items": [{"english": "zealous", "position": "line 1", "supplied": {},
+                           "state": "enriched", "chinese": "热心的"}],
+            }
+        ),
+        encoding="utf-8",
+    )
+    item = imported(login(make_app(tmp_path)))["items"][0]
+    assert (item["pos"], item["pos_review"]) == ([], None)

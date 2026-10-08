@@ -134,3 +134,26 @@ def test_ipa_on_is_text(tmp_path: Path):
     items, warnings = load_vocabulary(tmp_path)
     assert items[0].ipa == "on"
     assert warnings == []
+
+
+# --- spec 019: optional pos field (contracts/pos-field-format.md) ------------
+
+
+def test_pos_field_loads_and_bad_value_warns(tmp_path: Path):
+    (tmp_path / "w.md").write_text(
+        "---\nenglish: zealous\npos: [adj.]\nchinese: 热心的\n---\n\n"
+        "---\nenglish: rent\npos: noun/verb\nchinese: 租金\n---\n\n"
+        "---\nenglish: plain\nchinese: 平的\n---\n\n"
+        "---\nenglish: bad\npos: verbish\nchinese: 坏\n---\n",
+        encoding="utf-8",
+    )
+    items, warnings = load_vocabulary(tmp_path)
+    assert [i.pos for i in items] == [["adj."], ["n.", "v."], [], []]
+    assert warnings == [
+        "w.md: 'bad': pos \"verbish\" is not a part of speech — shown without one"
+    ]
+
+
+def test_files_without_pos_have_no_new_warnings(tmp_path: Path):
+    (tmp_path / "w.md").write_text("---\nenglish: plain\nchinese: 平的\n---\n", encoding="utf-8")
+    assert load_vocabulary(tmp_path)[1] == []

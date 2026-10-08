@@ -817,3 +817,19 @@ p { margin: 0; }
   .import-table td > * { grid-column: 2; justify-self: start; }
   .import-actions .btn { flex: 1 1 100%; }
 }
+
+/* — part of speech (spec 019) — */
+
+.pos-list { margin-right: 0.4em; white-space: nowrap; }
+.pos {
+  font-family: var(--font-body);
+  font-style: italic;
+  font-weight: 400;
+  color: var(--color-accent-700);
+  cursor: help;
+}
+.pos + .pos { margin-left: 0.3em; }
+.meanings .pos-list { font-size: 0.55em; margin-right: 0; }
+.target-meaning .pos-list { font-size: inherit; }
+.feedback-head .pos-list { font-size: 18px; margin-left: var(--space-2); }
+.import-preview .pos-list { font-size: 13px; }

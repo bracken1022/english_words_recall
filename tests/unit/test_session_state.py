@@ -944,3 +944,58 @@ def test_no_ipa_key_on_choose_complete_empty(tmp_path: Path):
         done.submit_answer("x")
         done.continue_to_next()
     assert "ipa" not in done.state()
+
+
+# --- spec 019: pos shown with the meaning at every word step -------------------
+
+
+def _pos_vocab(tmp_path: Path) -> Path:
+    vocab_dir = tmp_path / "pos-vocab"
+    vocab_dir.mkdir()
+    (vocab_dir / "unit1.md").write_text(
+        "---\nenglish: zealous\npos: [adj.]\nchinese: 热心的\n---\n\n"
+        "---\nenglish: give up\nchinese: 放弃\n---\n",
+        encoding="utf-8",
+    )
+    return vocab_dir
+
+
+def test_pos_shown_during_recall_and_reveal(tmp_path: Path):
+    session = PracticeSession(
+        vocab_dir=_pos_vocab(tmp_path), progress_file=tmp_path / "p.md", mode="recall-only"
+    )
+    assert session.step == "recall"
+    assert session.state()["pos"] == ["adj."]
+    session.submit_answer("adj.")
+    assert session.step == "reveal"
+    assert session.pending_attempt["correct"] is False
+    assert session.state()["pos"] == ["adj."]
+    session.continue_to_next()
+    assert session.state()["pos"] == []
+
+
+@patch("src.web.session_state.request_correction")
+def test_pos_shown_on_sentence_and_feedback(mock_request, tmp_path: Path):
+    mock_request.return_value = CorrectionResult(
+        available=True, uses_expression=True, needs_correction=False, corrected=None, explanation=""
+    )
+    session = PracticeSession(vocab_dir=_pos_vocab(tmp_path), progress_file=tmp_path / "p.md")
+    session.submit_answer("zealous")
+    assert session.state()["pos"] == ["adj."]
+    session.submit_sentence("She is zealous.", base_url="x", model="m")
+    assert session.step == "feedback"
+    assert session.state()["pos"] == ["adj."]
+
+
+def test_no_pos_key_on_choose_complete_empty(tmp_path: Path):
+    vocab_dir = _pos_vocab(tmp_path)
+    session = PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "p.md", offer_choice=True)
+    assert "pos" not in session.state()
+    empty_dir = tmp_path / "none"
+    empty_dir.mkdir()
+    assert "pos" not in PracticeSession(vocab_dir=empty_dir, progress_file=tmp_path / "p.md").state()
+    done = PracticeSession(vocab_dir=vocab_dir, progress_file=tmp_path / "p.md", mode="recall-only")
+    while done.step != "complete":
+        done.submit_answer("x")
+        done.continue_to_next()
+    assert "pos" not in done.state()

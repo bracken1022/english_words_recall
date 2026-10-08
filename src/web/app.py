@@ -19,6 +19,7 @@ from src.services.enrichment import (
     build_import,
     existing_lookup_for,
 )
+from src.services.enrichment_client import request_pos
 from src.services.speech_client import is_available, transcribe
 from src.services.word_lists import (
     ListExistsError,
@@ -205,7 +206,10 @@ def create_app(
         # Spec 018: uploads enriched by the local model, saved on confirm
         # (contracts/import-api-contract.md).
         runner = EnrichmentRunner(
-            PendingImportStore(word_lists_dir), app.config["OLLAMA_URL"], app.config["MODEL"]
+            PendingImportStore(word_lists_dir),
+            app.config["OLLAMA_URL"],
+            app.config["MODEL"],
+            pos_request_fn=request_pos,
         )
         app.enrichment_runner = runner
 
@@ -289,7 +293,9 @@ def create_app(
                     # Defence in depth: everything written must still be a
                     # valid vocabulary entry.
                     new_items = [
-                        VocabularyItem(i.english, i.chinese, list(i.alternates), ipa=i.ipa)
+                        VocabularyItem(
+                            i.english, i.chinese, list(i.alternates), ipa=i.ipa, pos=list(i.pos)
+                        )
                         for i in savable
                     ]
                 except VocabularyItemError:

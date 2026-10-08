@@ -100,7 +100,8 @@ def test_supplied_chinese_is_kept_and_sent_as_context(tmp_path):
 
 
 def test_fully_supplied_word_makes_no_request(tmp_path):
-    draft = DraftWord("receive", "收到", "rɪˈsiːv", ["accept"], "line 1")
+    # Spec 019: "fully supplied" now means meaning and part of speech.
+    draft = DraftWord("receive", "收到", "rɪˈsiːv", ["accept"], "line 1", pos=["v."])
     runner, _, calls = _run(tmp_path, [draft], {})
     item = runner.get(LILY).items[0]
     assert calls == []
@@ -307,3 +308,64 @@ def test_interrupted_import_resumes_on_retry(tmp_path, gate):
     fresh.wait(LILY, 5)
     assert calls == ["a1", "a2", "a3"]
     assert fresh.get(LILY).status == "completed"
+
+
+# --- spec 019: part of speech from a second, separate request ------------------
+
+
+def _run_with_pos(tmp_path, words, pos_replies, meaning=None):
+    pos_calls = []
+
+    def fake_pos(english, chinese, base_url, model):
+        pos_calls.append((english, chinese))
+        reply = pos_replies[english]
+        return reply if isinstance(reply, EnrichmentReply) else EnrichmentReply("ok", pos=reply)
+
+    store = SpyStore(tmp_path)
+    runner = EnrichmentRunner(
+        store, "u", "m",
+        request_fn=lambda english, *_: meaning(english) if meaning else ok(chinese="中文"),
+        pos_request_fn=fake_pos,
+    )
+    runner.begin(LILY, build_import("z", "z.txt", _drafts(*words)))
+    runner.wait(LILY, 5)
+    return runner, pos_calls
+
+
+def test_pos_comes_from_second_request_with_the_meaning(tmp_path):
+    runner, pos_calls = _run_with_pos(
+        tmp_path, ["rent"], {"rent": ["n.", "v."]}, meaning=lambda _w: ok(chinese="租金；（动词）出租")
+    )
+    item = runner.get(LILY).items[0]
+    assert pos_calls == [("rent", "租金；出租")]
+    assert (item.pos, item.pos_review) == (["n."], None)  # first label only
+
+
+def test_bad_pos_reply_marks_review(tmp_path):
+    runner, _ = _run_with_pos(tmp_path, ["rent"], {"rent": EnrichmentReply("bad_reply")})
+    item = runner.get(LILY).items[0]
+    assert (item.state, item.pos, item.pos_review) == ("enriched", [], "part of speech needs review")
+
+
+def test_pos_request_unavailable_stops_batch(tmp_path):
+    runner, _ = _run_with_pos(
+        tmp_path, ["rent", "tyre"], {"rent": EnrichmentReply("unavailable"), "tyre": ["n."]}
+    )
+    pending = runner.get(LILY)
+    assert pending.status == "failed"
+    assert [i.state for i in pending.items] == ["waiting", "waiting"]
+
+
+def test_supplied_pos_skips_pos_request(tmp_path):
+    draft = DraftWord("rent", None, None, [], "line 1", pos=["n."])
+    runner, pos_calls = _run_with_pos(tmp_path, [draft], {})
+    assert pos_calls == []
+    assert runner.get(LILY).items[0].pos == ["n."]
+
+
+def test_failed_meaning_makes_no_pos_request(tmp_path):
+    runner, pos_calls = _run_with_pos(
+        tmp_path, ["rent"], {}, meaning=lambda _w: ok(chinese="hello")
+    )
+    assert pos_calls == []
+    assert runner.get(LILY).items[0].state == "failed"

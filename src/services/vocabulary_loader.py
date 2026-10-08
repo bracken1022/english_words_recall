@@ -35,5 +35,9 @@ def load_vocabulary(vocab_dir: Path) -> tuple[list[VocabularyItem], list[str]]:
                 warnings.append(
                     f"{md_file.name}: '{item.english}': {item.ipa_problem} — shown without one"
                 )
+            if item.pos_problem:
+                warnings.append(
+                    f"{md_file.name}: '{item.english}': {item.pos_problem} — shown without one"
+                )
 
     return items, warnings

@@ -117,3 +117,50 @@ def test_rule6_failed_check(monkeypatch):
 def test_rule7_dictionary_pronunciation(english, ipa):
     item = _validated(english)
     assert (item.ipa, item.ipa_review) == (ipa, None)
+
+
+# --- spec 019: part-of-speech rules 1-3 and meaning notes ----------------------
+
+
+def _with_pos(pos, supplied=None, english="zealous"):
+    item = ImportItem(english=english, position="line 1", supplied=supplied or {})
+    validate_item(item, EnrichmentReply(outcome="ok", chinese="热心的", pos=pos, alternates=[]))
+    assert item.state == "enriched"
+    return item
+
+
+def test_pos_rule1_supplied_kept():
+    item = _with_pos(["n."], supplied={"pos": ["v."]})
+    assert (item.pos, item.pos_review) == (["v."], None)
+
+
+def test_pos_rule2_normalised():
+    item = _with_pos(["Adjective"])
+    assert (item.pos, item.pos_review) == (["adj."], None)
+
+
+@pytest.mark.parametrize("pos", [[], ["verbish"], ["n.", "foo"]])
+def test_pos_rule3_needs_review(pos):
+    item = _with_pos(pos)
+    assert (item.pos, item.pos_review) == ([], "part of speech needs review")
+
+
+def test_generated_meaning_loses_pos_notes():
+    assert validate_chinese("租金；（动词）出租") == ("租金；出租", None)
+    assert validate_chinese("（动词）") == (None, UNUSABLE)
+
+
+def test_supplied_meaning_keeps_pos_notes():
+    item = _with_pos(["n."], supplied={"chinese": "租金；（动词）出租"})
+    assert item.chinese == "租金；（动词）出租"
+
+
+def test_pos_generated_keeps_only_first_label():
+    # T030 decision: the model over-labels, so only its first label is kept.
+    item = _with_pos(["n.", "v."])
+    assert (item.pos, item.pos_review) == (["n."], None)
+
+
+def test_pos_supplied_keeps_every_label():
+    item = _with_pos(["adj."], supplied={"pos": ["n.", "v."]})
+    assert item.pos == ["n.", "v."]

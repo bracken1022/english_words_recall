@@ -19,6 +19,7 @@ import yaml
 
 from src.lib.ipa import normalize_ipa
 from src.lib.markdown_blocks import _BLOCK_RE, parse_blocks
+from src.lib.pos import is_pos_field, normalize_pos
 from src.models.account import Account
 from src.models.vocabulary_item import VocabularyItem, VocabularyItemError
 
@@ -52,6 +53,7 @@ class DraftWord:
     ipa: str | None
     alternates: list[str]
     position: str
+    pos: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -91,12 +93,15 @@ def _is_pronunciation(field_text: str) -> bool:
 
 def _split_extras(
     number: int, extras: list[str], skipped: list[str]
-) -> tuple[str | None, list[str]]:
+) -> tuple[str | None, list[str], list[str]]:
     """Fields after the Chinese meaning: one written as /…/ or […] is the
-    pronunciation (spec 017); the rest are extra accepted answers."""
+    pronunciation (spec 017), one like "adj." or "n. v." the part of speech
+    (spec 019); the rest are extra accepted answers. Returns (ipa, pos,
+    alternates)."""
     extras = [f for f in extras if f]
     pronunciations = [f for f in extras if _is_pronunciation(f)]
-    alternates = [f for f in extras if not _is_pronunciation(f)]
+    pos_fields = [f for f in extras if not _is_pronunciation(f) and is_pos_field(f)]
+    alternates = [f for f in extras if f not in pronunciations and f not in pos_fields]
     ipa = None
     if pronunciations:
         ipa, problem = normalize_ipa(pronunciations[0])
@@ -104,23 +109,37 @@ def _split_extras(
             skipped.append(f'line {number}: "{pronunciations[0]}" is not a pronunciation')
         if len(pronunciations) > 1:
             skipped.append(f"line {number}: more than one pronunciation — kept the first")
-    return ipa, alternates
+    pos: list[str] = []
+    if pos_fields:
+        pos = normalize_pos(pos_fields[0])[0] or []
+        if len(pos_fields) > 1:
+            skipped.append(f"line {number}: more than one part of speech — kept the first")
+    return ipa, pos, alternates
+
+
+def _meaning_slot(fields: list[str]) -> tuple[str | None, list[str]]:
+    """The Chinese meaning is the first field after the English word that
+    is neither a pronunciation nor a part of speech; an empty one means
+    there is none. Returns (chinese, the other fields)."""
+    rest = list(fields[1:])
+    for index, value in enumerate(rest):
+        if value and (_is_pronunciation(value) or is_pos_field(value)):
+            continue
+        return (value or None), rest[:index] + rest[index + 1 :]
+    return None, rest
 
 
 def _simple_item(number: int, fields: list[str], skipped: list[str]) -> VocabularyItem:
-    ipa, alternates = _split_extras(number, fields[2:], skipped)
-    return VocabularyItem(fields[0], fields[1], alternates, ipa=ipa)
+    chinese, extras = _meaning_slot(fields)
+    ipa, pos, alternates = _split_extras(number, extras, skipped)
+    return VocabularyItem(fields[0], chinese, alternates, ipa=ipa, pos=pos)
 
 
 def _simple_draft(number: int, fields: list[str], skipped: list[str]) -> DraftWord:
-    # Spec 018: the Chinese meaning is optional, so a pronunciation may
-    # come straight after the English word.
-    chinese = None
-    extras = fields[1:]
-    if extras and extras[0] and not _is_pronunciation(extras[0]):
-        chinese, extras = extras[0], extras[1:]
-    ipa, alternates = _split_extras(number, extras, skipped)
-    return DraftWord(fields[0], chinese, ipa, alternates, f"line {number}")
+    # Spec 018: the Chinese meaning is optional.
+    chinese, extras = _meaning_slot(fields)
+    ipa, pos, alternates = _split_extras(number, extras, skipped)
+    return DraftWord(fields[0], chinese, ipa, alternates, f"line {number}", pos=pos)
 
 
 def _parse_simple(text: str, require_chinese: bool = True) -> ParsedUpload:
@@ -138,7 +157,7 @@ def _parse_simple(text: str, require_chinese: bool = True) -> ParsedUpload:
             parsed.skipped.append(f"line {number}: no English word")
         elif not require_chinese:
             parsed.items.append(_simple_draft(number, fields, parsed.skipped))
-        elif len(fields) < 2 or not fields[1]:
+        elif _meaning_slot(fields)[0] is None:
             parsed.skipped.append(f"line {number}: no Chinese meaning")
         else:
             parsed.items.append(_simple_item(number, fields, parsed.skipped))
@@ -159,8 +178,13 @@ def _markdown_draft(number: int, block: dict, skipped: list[str]) -> DraftWord |
     ipa, problem = normalize_ipa(block.get("ipa"))
     if problem:
         skipped.append(f"block {number}: {problem}")
+    pos, pos_problem = normalize_pos(block.get("pos"))
+    if pos_problem:
+        skipped.append(f"block {number}: {pos_problem}")
     # Any group is ignored: the list name becomes the group when saved.
-    return DraftWord(english.strip(), chinese, ipa, list(alternates), f"block {number}")
+    return DraftWord(
+        english.strip(), chinese, ipa, list(alternates), f"block {number}", pos=pos or []
+    )
 
 
 # Markdown list markers: "- word", "* word", "+ word", "1. word", "1) word".
@@ -199,6 +223,8 @@ def _parse_markdown(text: str, require_chinese: bool = True) -> ParsedUpload:
         parsed.items.append(item)
         if item.ipa_problem:
             parsed.skipped.append(f"block {number}: {item.ipa_problem}")
+        if item.pos_problem:
+            parsed.skipped.append(f"block {number}: {item.pos_problem}")
     return parsed
 
 
@@ -234,33 +260,60 @@ def sanitize_list_name(stem: str) -> str:
     return name[:MAX_NAME_LENGTH].strip()
 
 
+class _FlowList(list):
+    """A list written on one line, as `pos: [n., v.]` (spec 019)."""
+
+
+class _Dumper(yaml.SafeDumper):
+    pass
+
+
+_Dumper.add_representer(
+    _FlowList,
+    lambda dumper, data: dumper.represent_sequence(
+        "tag:yaml.org,2002:seq", data, flow_style=True
+    ),
+)
+
+
+def _dump_block(block: dict) -> str:
+    if block.get("pos"):
+        block = {**block, "pos": _FlowList(block["pos"])}
+    yaml_text = yaml.dump(
+        block, Dumper=_Dumper, allow_unicode=True, sort_keys=False, default_flow_style=False
+    )
+    return f"---\n{yaml_text}---\n"
+
+
 def _to_markdown(name: str, items: list[VocabularyItem]) -> str:
     chunks = []
     for item in items:
         block = {"english": item.english}
         if item.ipa:
             block["ipa"] = item.ipa
+        if item.pos:
+            block["pos"] = list(item.pos)
         block.update(
             {"alternates": list(item.alternates), "chinese": item.chinese, "group": name}
         )
-        yaml_text = yaml.safe_dump(
-            block, allow_unicode=True, sort_keys=False, default_flow_style=False
-        )
-        chunks.append(f"---\n{yaml_text}---\n")
+        chunks.append(_dump_block(block))
     return "\n".join(chunks)
 
 
 def _updated_block(block: dict, fields: dict) -> dict:
-    """*block* with ipa (dropped when None), alternates and chinese taken
-    from *fields*. Other keys and the key order are kept; a new ipa goes
-    right after english, where _to_markdown writes it."""
+    """*block* with ipa and pos (each dropped when empty), alternates and
+    chinese taken from *fields*. Other keys and the key order are kept;
+    ipa and pos go right after english, where _to_markdown writes them."""
     updated: dict = {}
     for key, value in block.items():
-        if key == "ipa":
+        if key in ("ipa", "pos"):
             continue
         updated[key] = value
-        if key == "english" and fields.get("ipa"):
-            updated["ipa"] = fields["ipa"]
+        if key == "english":
+            if fields.get("ipa"):
+                updated["ipa"] = fields["ipa"]
+            if fields.get("pos"):
+                updated["pos"] = list(fields["pos"])
     updated["alternates"] = list(fields.get("alternates") or [])
     updated["chinese"] = fields["chinese"]
     return updated
@@ -403,10 +456,7 @@ class WordListStore:
                 fields = wanted.get(english.strip().casefold()) if isinstance(english, str) else None
                 if fields is not None:
                     block = _updated_block(block, fields)
-                yaml_text = yaml.safe_dump(
-                    block, allow_unicode=True, sort_keys=False, default_flow_style=False
-                )
-                chunks.append(f"---\n{yaml_text}---\n")
+                chunks.append(_dump_block(block))
             rendered[path] = "\n".join(chunks)
         return rendered
 

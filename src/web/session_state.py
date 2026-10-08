@@ -322,6 +322,8 @@ class PracticeSession:
 
         item = self.current_item
         base["chinese"] = item.chinese
+        # A hint shown with the meaning, never the answer (spec 019).
+        base["pos"] = list(item.pos)
         base["position"] = self.current_index + 1
         base["total"] = len(self.items)
         base["can_end_session"] = not self.group_locked

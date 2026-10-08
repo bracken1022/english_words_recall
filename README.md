@@ -219,6 +219,39 @@ It checks every value as British IPA first, backs each file up to
 nothing else changed (restoring the backup if it did), and writes a
 `REVIEW.md` with a 30-word sample to spot-check against a UK dictionary.
 
+### Parts of speech
+
+Each word can carry its part of speech, shown as short labels before the
+Chinese meaning: while you recall the word (*adj.* 热心的), on the
+answer, and on the sentence step. Hover a label to see its full name.
+The command-line tutor prints `Chinese meaning: adj. 热心的`. Grading
+never looks at the labels.
+
+The labels are `n.` `v.` `adj.` `adv.` `prep.` `conj.` `pron.` `det.`
+`int.` `num.` `phr. v.` (phrasal verb) and `phr.` (other phrase). In a
+vocabulary file, add a `pos:` line:
+
+```yaml
+english: rent
+pos: [n., v.]
+chinese: 租金；出租
+```
+
+`pos: n. v.`, `pos: noun/verb` and `pos: 名词；动词` all work too. A value
+that isn't a part of speech is reported as a warning, and the word loads
+without one. In a simple list, add the labels as a field, anywhere after
+the word: `zealous, adj., 热心的`. Uploaded words get them filled in
+automatically (see below).
+
+Every existing word was labelled once from a reviewed mapping. To label
+more files the same way (backups and a REVIEW.md are written to
+`backups/pos-<time>/`), run:
+
+```bash
+.venv/bin/python -m src.tools.add_pos --mapping mapping.tsv --dry-run word-lists/<user>/*.md
+.venv/bin/python -m src.tools.add_pos --mapping mapping.tsv word-lists/<user>/*.md
+```
+
 ### Your own word lists (web UI)
 
 Each learner can upload their own word lists from the word-set screen
@@ -269,6 +302,9 @@ tutor fills in each word, and everything stays on your machine:
 - a **short Chinese meaning**, written by the same local Ollama model
   used for sentence review (never a cloud service), with several
   meanings separated by `；`;
+- **parts of speech** (`adj.`, `n. v.`, `phr. v.`), also from the model,
+  checked against the fixed list; a label outside it shows "Part of
+  speech needs review";
 - **alternates**, also from the model, but only spelling variants of the
   same word (`tyre` → `tire`, `epitomise` → `epitomize`). Synonyms such
   as `arduous` → `difficult` are never added, because they would weaken

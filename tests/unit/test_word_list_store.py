@@ -161,3 +161,23 @@ def test_saved_list_keeps_ipa_after_english(tmp_path: Path):
     assert text.count("ipa:") == 1
     loaded, _ = load_vocabulary(tmp_path / "lily")
     assert [i.ipa for i in loaded] == ["rɪˈsiːv", None]
+
+
+# --- spec 019: pos is saved in key order, as a one-line list -----------------
+
+
+def test_pos_round_trips_in_key_order(tmp_path):
+    from src.lib.markdown_blocks import parse_blocks
+    from src.models.account import Account
+    from src.models.vocabulary_item import VocabularyItem
+    from src.services.word_lists import WordListStore
+
+    lily = Account("lily", "pw", "Lily", tmp_path / "p.md")
+    store = WordListStore(tmp_path)
+    item = VocabularyItem("rent", "租金；出租", ipa="rent", pos=["n.", "v."])
+    store.save(lily, "unit1", [item])
+    text = (tmp_path / "lily" / "unit1.md").read_text(encoding="utf-8")
+    assert "pos: [n., v.]\n" in text
+    (block,), _ = parse_blocks(text)
+    assert list(block) == ["english", "ipa", "pos", "alternates", "chinese", "group"]
+    assert VocabularyItem.from_block(block).pos == ["n.", "v."]

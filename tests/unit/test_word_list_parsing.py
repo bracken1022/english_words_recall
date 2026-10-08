@@ -278,3 +278,39 @@ def test_markdown_with_blocks_is_unchanged():
 
 def test_legacy_markdown_upload_still_needs_blocks():
     assert parse_upload("w.md", b"qualify\nquality\n").items == []
+
+
+# --- spec 019: part of speech in uploads --------------------------------------
+
+
+def test_simple_list_pos_field_any_position():
+    zealous = _drafts("zealous, adj., 热心的").items[0]
+    assert (zealous.pos, zealous.chinese) == (["adj."], "热心的")
+    rent = _drafts("rent, 租金；出租, n. v.").items[0]
+    assert (rent.pos, rent.chinese) == (["n.", "v."], "租金；出租")
+    give_up = _drafts("give up, 放弃, phr. v., /ˌɡɪv ˈʌp/").items[0]
+    assert (give_up.pos, give_up.ipa, give_up.alternates) == (["phr. v."], "ˌɡɪv ˈʌp", [])
+
+
+def test_bare_letter_stays_an_alternate():
+    tyre = _drafts("tyre, 轮胎, n").items[0]
+    assert (tyre.alternates, tyre.pos) == (["n"], [])
+
+
+def test_second_pos_field_is_reported():
+    parsed = _drafts("rent, 租金, n., v.")
+    assert parsed.items[0].pos == ["n."]
+    assert parsed.skipped == ["line 1: more than one part of speech — kept the first"]
+
+
+def test_legacy_upload_meaning_skips_pos_field():
+    item = _simple("receive, v., 收到").items[0]
+    assert (item.chinese, item.pos) == ("收到", ["v."])
+
+
+def test_markdown_draft_pos():
+    draft = _drafts("---\nenglish: zealous\npos: adjective\n---\n", "z.md").items[0]
+    assert draft.pos == ["adj."]
+    parsed = _drafts("---\nenglish: zealous\npos: verbish\n---\n", "z.md")
+    assert parsed.items[0].pos == []
+    assert parsed.skipped == ['block 1: pos "verbish" is not a part of speech']

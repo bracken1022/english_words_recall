@@ -20,6 +20,7 @@ from pathlib import Path
 from src.lib.alternates import filter_alternates, is_spelling_variant
 from src.lib.ipa import check_american_ipa, is_heteronym, normalize_ipa
 from src.lib.markdown_blocks import parse_blocks
+from src.lib.pos import normalize_pos, strip_pos_notes
 from src.lib.us_pronunciation import lookup_american_ipa
 from src.models.account import Account
 from src.services.enrichment_client import EnrichmentReply, request_enrichment
@@ -57,12 +58,15 @@ class ImportItem:
     existing: dict | None = None
     choice: str = "keep"
     duplicate_of: int | None = None
+    # Spec 019; defaults keep older pending-import files loadable.
+    pos: list[str] = field(default_factory=list)
+    pos_review: str | None = None
 
     def reset(self) -> None:
         """Back to waiting, dropping any earlier result (for a retry)."""
         self.state, self.error = "waiting", None
-        self.ipa = self.ipa_review = self.chinese = None
-        self.alternates, self.dropped_alternates = [], []
+        self.ipa = self.ipa_review = self.chinese = self.pos_review = None
+        self.alternates, self.dropped_alternates, self.pos = [], [], []
 
     @property
     def is_own_existing(self) -> bool:
@@ -113,7 +117,12 @@ class PendingImport:
         """The confirmed updates grouped by list, for WordListStore."""
         grouped: dict[str, list[tuple[str, dict]]] = {}
         for item in self.updates:
-            fields_ = {"ipa": item.ipa, "chinese": item.chinese, "alternates": list(item.alternates)}
+            fields_ = {
+                "ipa": item.ipa,
+                "pos": list(item.pos),
+                "chinese": item.chinese,
+                "alternates": list(item.alternates),
+            }
             grouped.setdefault(item.existing["list"], []).append((item.english, fields_))
         return grouped
 
@@ -152,6 +161,8 @@ class PendingImport:
                     "existing": item.existing,
                     "choice": item.choice,
                     "duplicate_of": item.duplicate_of,
+                    "pos": item.pos,
+                    "pos_review": item.pos_review,
                 }
                 for index, item in enumerate(self.items)
             ],
@@ -190,6 +201,8 @@ def validate_chinese(text) -> tuple[str | None, str | None]:
     (None, UNUSABLE_MEANING) when it isn't a concise study meaning."""
     if not isinstance(text, str) or "\n" in text.strip() or "\r" in text:
         return None, UNUSABLE_MEANING
+    # The part of speech has its own field now (spec 019, FR-008).
+    text = strip_pos_notes(text)
     parts = [part.strip() for part in re.split(r"[;；,，]", text.strip())]
     meaning = "；".join(parts)
     if (
@@ -220,16 +233,30 @@ def validate_item(item: ImportItem, reply: EnrichmentReply | None) -> None:
     else:
         chinese, problem = validate_chinese(reply.chinese if reply else None)
         if problem:
+            item.reset()
             item.state, item.error = "failed", problem
-            item.chinese, item.ipa, item.ipa_review = None, None, None
-            item.alternates, item.dropped_alternates = [], []
             return
     item.chinese = chinese
     item.alternates, item.dropped_alternates = filter_alternates(
         item.english, list(supplied.get("alternates") or []), reply.alternates if reply else []
     )
     item.ipa, item.ipa_review = _resolve_ipa(item)
+    item.pos, item.pos_review = _resolve_pos(item, reply)
     item.state = "enriched"
+
+
+def _resolve_pos(item: ImportItem, reply: EnrichmentReply | None) -> tuple[list[str], str | None]:
+    """(pos, pos_review) by contracts/enrichment-pos-delta.md: the learner's
+    labels; else the model's first label, if every label it gave is a
+    known one; else review."""
+    if item.supplied.get("pos"):
+        return list(item.supplied["pos"]), None
+    labels, _problem = normalize_pos(reply.pos if reply else None)
+    if labels:
+        # Only the first generated label is kept: the local model tends to
+        # add classes the meanings don't support (spec 019 eval-report.md).
+        return labels[:1], None
+    return [], "part of speech needs review"
 
 
 def _resolve_ipa(item: ImportItem) -> tuple[str | None, str | None]:
@@ -262,7 +289,8 @@ def _key(english: str) -> str:
 def _existing_entry(source: str, list_name: str, block: dict) -> dict:
     ipa, _problem = normalize_ipa(block.get("ipa"))
     alternates = block.get("alternates")
-    return {
+    pos, _pos_problem = normalize_pos(block.get("pos"))
+    entry = {
         "source": source,
         "list": list_name,
         "ipa": ipa,
@@ -271,6 +299,9 @@ def _existing_entry(source: str, list_name: str, block: dict) -> dict:
         if isinstance(alternates, list)
         else [],
     }
+    if pos:
+        entry["pos"] = pos  # only when stored (spec 019)
+    return entry
 
 
 def existing_lookup_for(
@@ -314,6 +345,8 @@ def build_import(
             supplied["chinese"] = draft.chinese
         if draft.ipa:
             supplied["ipa"] = draft.ipa
+        if draft.pos:
+            supplied["pos"] = list(draft.pos)
         item = ImportItem(english=draft.english, position=draft.position, supplied=supplied)
         key = _key(draft.english)
         if key in first_index:
@@ -386,6 +419,29 @@ class PendingImportStore:
         self.path(account).unlink(missing_ok=True)
 
 
+def with_pos(
+    item: ImportItem,
+    reply: EnrichmentReply,
+    pos_request_fn: Callable[..., EnrichmentReply],
+    base_url: str,
+    model: str,
+) -> EnrichmentReply:
+    """Spec 019: once the meaning is known, ask for the part of speech in
+    its own request. An unavailable model makes the whole word wait; any
+    other failure leaves the labels empty, so the word is marked for
+    review. Supplied labels need no request."""
+    if reply.outcome != "ok" or item.supplied.get("pos"):
+        return reply
+    chinese = item.supplied.get("chinese") or validate_chinese(reply.chinese)[0]
+    if not chinese:
+        return reply
+    pos_reply = pos_request_fn(item.english, chinese, base_url, model)
+    if pos_reply.outcome == "unavailable":
+        return pos_reply
+    reply.pos = pos_reply.pos if pos_reply.outcome == "ok" else []
+    return reply
+
+
 # --- background enrichment ---------------------------------------------------
 
 
@@ -401,11 +457,15 @@ class EnrichmentRunner:
         base_url: str,
         model: str,
         request_fn: Callable[..., EnrichmentReply] = request_enrichment,
+        pos_request_fn: Callable[..., EnrichmentReply] | None = None,
     ):
         self.store = pending_store
         self.base_url = base_url
         self.model = model
         self.request_fn = request_fn
+        # Spec 019: the part-of-speech request (request_pos in the app);
+        # None leaves part of speech to the upload, or to review.
+        self.pos_request_fn = pos_request_fn
         self._pending: dict[str, PendingImport | None] = {}
         self._threads: dict[str, threading.Thread] = {}
         self._cancel: dict[str, threading.Event] = {}
@@ -530,6 +590,11 @@ class EnrichmentRunner:
             self.forget(account)
             return existed
 
+    def _with_pos(self, item: ImportItem, reply: EnrichmentReply) -> EnrichmentReply:
+        if self.pos_request_fn is None:
+            return reply
+        return with_pos(item, reply, self.pos_request_fn, self.base_url, self.model)
+
     def _work(self, account: Account, pending: PendingImport, cancel: threading.Event) -> None:
         lock = self.lock(account)
         for item in pending.items:
@@ -542,8 +607,12 @@ class EnrichmentRunner:
                 self.store.save(account, pending)
 
             reply = None
-            if not (item.supplied.get("chinese") and item.supplied.get("ipa")):
+            # The model supplies the meaning and alternates, then (in a
+            # separate request) the part of speech; IPA always comes from
+            # the dictionary (spec 018 R4, spec 019).
+            if not (item.supplied.get("chinese") and item.supplied.get("pos")):
                 reply = self.request_fn(item.english, item.supplied, self.base_url, self.model)
+                reply = self._with_pos(item, reply)
 
             with lock:
                 if cancel.is_set():

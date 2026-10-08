@@ -119,3 +119,63 @@ def test_attested_variants_count_as_matches(tmp_path, capsys):
     with patch("src.services.llm_client.requests.post", side_effect=_fake(replies)):
         assert main(["--fixture", str(_fixture(tmp_path, words=words))]) == 0
     assert "IPA:            1/1 match" in capsys.readouterr().out
+
+
+# --- spec 019: part-of-speech accuracy -----------------------------------------
+
+
+def _pos_fixture(tmp_path, pos, pos_ok=None):
+    word = {"english": "zealous", "ipa": "ˈzeləs", "chinese_any": ["热心"], "pos": pos}
+    if pos_ok:
+        word["pos_ok"] = pos_ok
+    return _fixture(tmp_path, words=[word])
+
+
+def _with_pos(labels, chinese="热心的"):
+    return {**REPLIES, "zealous": {**REPLIES["zealous"], "chinese": chinese, "pos": labels}}
+
+
+def test_pos_match_passes(tmp_path, capsys):
+    with patch("src.services.llm_client.requests.post", side_effect=_fake(_with_pos(["adj."]))):
+        assert main(["--fixture", str(_pos_fixture(tmp_path, ["adj."]))]) == 0
+    out = capsys.readouterr().out
+    assert "Part of speech: 1/1 match or flagged (100%" in out
+    assert "POS notes left in meanings: 0" in out
+
+
+def test_pos_outside_reference_fails(tmp_path, capsys):
+    with patch("src.services.llm_client.requests.post", side_effect=_fake(_with_pos(["n."]))):
+        assert main(["--fixture", str(_pos_fixture(tmp_path, ["adj."]))]) == 1
+    assert "pos     zealous: [n.], expected [adj.]" in capsys.readouterr().out
+
+
+def test_pos_ok_labels_are_accepted(tmp_path, capsys):
+    replies = _with_pos(["adj.", "n."])
+    with patch("src.services.llm_client.requests.post", side_effect=_fake(replies)):
+        assert main(["--fixture", str(_pos_fixture(tmp_path, ["adj."], ["n."]))]) == 0
+
+
+def test_flagged_pos_counts_as_safe(tmp_path, capsys):
+    with patch("src.services.llm_client.requests.post", side_effect=_fake(_with_pos(["verbish"]))):
+        assert main(["--fixture", str(_pos_fixture(tmp_path, ["adj."]))]) == 0
+    assert "1 flagged" in capsys.readouterr().out
+
+
+def test_phrase_with_acceptable_single_class_counts(tmp_path, capsys):
+    # 2026-10-05 decision: for a multi-word expression, labels that are all
+    # in pos ∪ pos_ok count (tend to → v.), as OALD files such phrases under
+    # the verb. Single words still need one label from pos.
+    words = [{"english": "tend to", "ipa": "ˈtend tə", "chinese_any": ["倾向"],
+              "pos": ["phr. v."], "pos_ok": ["v.", "phr."]}]  # fmt: skip
+    replies = {"tend to": {"chinese": "倾向于", "alternates": [], "pos": ["v."]}}
+    with patch("src.services.llm_client.requests.post", side_effect=_fake(replies)):
+        assert main(["--fixture", str(_fixture(tmp_path, words=words, traps=[], variants=[], heteronyms=[]))]) == 0
+    assert "Part of speech: 1/1 match or flagged" in capsys.readouterr().out
+
+
+def test_single_word_still_needs_a_required_label(tmp_path, capsys):
+    words = [{"english": "figure", "ipa": "ˈfɪɡjər", "chinese_any": ["数字"],
+              "pos": ["n."], "pos_ok": ["v."]}]  # fmt: skip
+    replies = {"figure": {"chinese": "数字", "alternates": [], "pos": ["v."]}}
+    with patch("src.services.llm_client.requests.post", side_effect=_fake(replies)):
+        assert main(["--fixture", str(_fixture(tmp_path, words=words, traps=[], variants=[], heteronyms=[]))]) == 1

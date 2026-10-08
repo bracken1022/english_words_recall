@@ -97,3 +97,34 @@ def test_ipa_problem_not_compared_or_shown():
     b = VocabularyItem(english="x", chinese="y")
     assert a == b
     assert "ipa_problem" not in repr(a)
+
+
+# --- spec 019: part of speech --------------------------------------------------
+
+
+def test_pos_defaults_to_empty():
+    item = VocabularyItem("receive", "收到")
+    assert item.pos == []
+    assert item.pos_problem is None
+
+
+def test_pos_from_block_is_normalised():
+    item = VocabularyItem.from_block({"english": "rent", "chinese": "租", "pos": "n. v."})
+    assert item.pos == ["n.", "v."]
+
+
+def test_bad_pos_loads_without_labels():
+    item = VocabularyItem.from_block({"english": "rent", "chinese": "租", "pos": "verbish"})
+    assert item.pos == []
+    assert "is not a part of speech" in item.pos_problem
+
+
+def test_pos_problem_not_compared_or_shown():
+    a = VocabularyItem("rent", "租", pos_problem="x")
+    assert a == VocabularyItem("rent", "租")
+    assert "pos_problem" not in repr(a)
+
+
+def test_pos_does_not_change_accepted_expressions():
+    item = VocabularyItem("rent", "租", ["hire"], pos=["n.", "v."])
+    assert item.accepted_expressions() == ["rent", "hire"]

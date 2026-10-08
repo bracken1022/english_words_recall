@@ -17,15 +17,17 @@ from pathlib import Path
 import yaml
 
 from src.lib.ipa import _US_VOWELS, _syllables, check_american_ipa
+from src.lib.pos import strip_pos_notes
 from src.models.vocabulary_item import VocabularyItem, VocabularyItemError
-from src.services.enrichment import ImportItem, validate_item
-from src.services.enrichment_client import request_enrichment
+from src.services.enrichment import ImportItem, validate_item, with_pos
+from src.services.enrichment_client import request_enrichment, request_pos
 from src.services.llm_client import DEFAULT_MODEL
 
 DEFAULT_FIXTURE = Path(__file__).resolve().parents[2] / "tests/fixtures/enrichment_eval.yml"
 
 IPA_TARGET = 0.95  # SC-002: match or flagged
 VARIANT_TARGET = 0.90  # SC-003
+POS_TARGET = 0.95  # spec 019 SC-002
 
 
 class Unavailable(Exception):
@@ -60,6 +62,7 @@ def _enricher(base_url: str, model: str):
         if english not in cache:
             item = ImportItem(english=english, position="eval", supplied={"alternates": []})
             reply = request_enrichment(english, item.supplied, base_url, model)
+            reply = with_pos(item, reply, request_pos, base_url, model)
             if reply.outcome == "unavailable":
                 raise Unavailable(english)
             if reply.outcome == "ok":
@@ -91,6 +94,8 @@ def evaluate(fixture: dict, enrich, out=None) -> bool:
     out = out or sys.stdout
     words = fixture.get("words", [])
     matched = flagged = wrong = chinese_hits = failed = invalid = 0
+    pos_matched = pos_flagged = pos_wrong = pos_notes = 0
+    pos_words = [e for e in words if "pos" in e]
     for entry in words:
         item = enrich(entry["english"])
         invalid += _is_invalid(item)
@@ -114,6 +119,24 @@ def evaluate(fixture: dict, enrich, out=None) -> bool:
             chinese_hits += 1
         else:
             print(f"  meaning {entry['english']}: {item.chinese}", file=out)
+        if strip_pos_notes(item.chinese or "") != (item.chinese or ""):
+            pos_notes += 1
+            print(f"  pos note left in {entry['english']}: {item.chinese}", file=out)
+        if "pos" in entry:
+            # Spec 019 R6: all labels acceptable and one of them required.
+            # For a multi-word expression any acceptable label will do
+            # (tend to → v.; decided 2026-10-05, eval-report.md).
+            required = set(entry["pos"])
+            acceptable = required | set(entry.get("pos_ok", []))
+            phrase = " " in entry["english"].strip()
+            if item.pos_review:
+                pos_flagged += 1
+            elif set(item.pos) <= acceptable and (phrase or set(item.pos) & required):
+                pos_matched += 1
+            else:
+                pos_wrong += 1
+                got, want = ", ".join(item.pos), ", ".join(entry["pos"])
+                print(f"  pos     {entry['english']}: [{got}], expected [{want}]", file=out)
 
     heteronyms = fixture.get("heteronyms", [])
     heteronyms_flagged = sum(1 for w in heteronyms if enrich(w).ipa is None)
@@ -138,6 +161,7 @@ def evaluate(fixture: dict, enrich, out=None) -> bool:
 
     total = len(words)
     ipa_ok = (matched + flagged) / total if total else 1
+    pos_ok = (pos_matched + pos_flagged) / len(pos_words) if pos_words else 1
     variant_recall = found / len(variants) if variants else 1
     tested = total - failed
     report = [
@@ -157,6 +181,12 @@ def evaluate(fixture: dict, enrich, out=None) -> bool:
             f"Variants:       {found}/{len(variants)} found ({variant_recall:.0%}, "
             f"target ≥ {VARIANT_TARGET:.0%})"
         ),
+        (
+            f"Part of speech: {pos_matched + pos_flagged}/{len(pos_words)} match or flagged "
+            f"({pos_ok:.0%}, target ≥ {POS_TARGET:.0%}): {pos_matched} match, "
+            f"{pos_flagged} flagged, {pos_wrong} wrong"
+        ),
+        f"POS notes left in meanings: {pos_notes} (target 0)",
         f"Invalid output: {invalid} (target 0)",
     ]
     print("\n".join(report), file=out)
@@ -166,8 +196,10 @@ def evaluate(fixture: dict, enrich, out=None) -> bool:
         and not leaks
         and variant_recall >= VARIANT_TARGET
         and invalid == 0
+        and pos_ok >= POS_TARGET
+        and pos_notes == 0
     )
-    print("PASS" if passed else "FAIL: SC-002/SC-003 not met", file=out)
+    print("PASS" if passed else "FAIL: a target above is not met", file=out)
     return passed
 
 

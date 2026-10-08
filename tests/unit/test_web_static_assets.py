@@ -484,3 +484,47 @@ def test_app_js_import_review_badge():
     assert "item.ipa_review" in section
     assert ".title = item.ipa_review" in section
     assert "en-US-fonipa" in section
+
+
+# --- spec 019: part-of-speech labels -------------------------------------------
+
+
+def _js_function(js: str, name: str) -> str:
+    start = js.index(f"function {name}(")
+    return js[start : js.index("\n  function ", start + 1)]
+
+
+def test_app_js_shows_pos_labels():
+    js = JS_PATH.read_text(encoding="utf-8")
+    pos_list = _js_function(js, "posList")
+    assert "innerHTML" not in pos_list
+    assert "aria-label" in pos_list or "ariaLabel" in pos_list
+    assert ".title" in pos_list
+    for name in ("renderRecall", "renderSentence", "renderFeedback"):
+        assert "state.pos" in _js_function(js, name), name
+    for label, full in [
+        ("n.", "noun"), ("v.", "verb"), ("adj.", "adjective"), ("adv.", "adverb"),
+        ("prep.", "preposition"), ("conj.", "conjunction"), ("pron.", "pronoun"),
+        ("det.", "determiner"), ("int.", "interjection"), ("num.", "number"),
+        ("phr. v.", "phrasal verb"), ("phr.", "phrase or idiom"),
+    ]:  # fmt: skip
+        assert f'"{label}": "{full}"' in js
+
+
+def test_pos_styles():
+    css = CSS_PATH.read_text(encoding="utf-8")
+    assert ".pos-list" in css
+    assert ".pos {" in css or ".pos," in css
+
+
+def test_import_preview_shows_pos():
+    section = _import_js_section()
+    assert "posList(item.pos)" in section
+    assert "Part of speech needs review" in section
+    assert "item.pos_review" in section
+
+
+def test_upload_hint_shows_pos_example():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    start = html.index('id="upload-format-hint"')
+    assert "v." in html[start : html.index("</p>", start)]

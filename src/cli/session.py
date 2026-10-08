@@ -9,6 +9,7 @@ from rich.console import Console
 
 from src.cli.loading_indicator import run_with_indicator
 from src.lib.ipa import display_ipa
+from src.lib.pos import display_pos
 from src.models.practice_attempt import PracticeAttempt
 from src.models.vocabulary_item import VocabularyItem
 from src.services.llm_client import DEFAULT_MODEL, request_correction
@@ -36,7 +37,8 @@ def run_recall_step(
     FR-002 (hide English until submission), FR-003 (free-text answer),
     FR-004 (exact-match grading), FR-005 (always reveal after submission).
     """
-    console.print(f"Chinese meaning: [bold]{item.chinese}[/bold]")
+    labels = f"{display_pos(item.pos)} " if item.pos else ""
+    console.print(f"Chinese meaning: {labels}[bold]{item.chinese}[/bold]")
 
     if answer_input is None:
         answer = _default_answer_input("Your answer (English): ")

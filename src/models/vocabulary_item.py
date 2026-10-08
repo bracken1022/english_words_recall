@@ -3,6 +3,7 @@
 from dataclasses import dataclass, field
 
 from src.lib.ipa import normalize_ipa
+from src.lib.pos import normalize_pos
 
 
 class VocabularyItemError(ValueError):
@@ -20,6 +21,9 @@ class VocabularyItem:
     # rejected; the word still loads without one.
     ipa: str | None = None
     ipa_problem: str | None = field(default=None, compare=False, repr=False)
+    # Part-of-speech labels (spec 019), e.g. ["n.", "v."]; never graded.
+    pos: list[str] = field(default_factory=list)
+    pos_problem: str | None = field(default=None, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.english, str):
@@ -36,6 +40,8 @@ class VocabularyItem:
             raise VocabularyItemError("VocabularyItem requires 'group' to be a string or absent")
         if self.ipa is not None and not isinstance(self.ipa, str):
             raise VocabularyItemError("VocabularyItem requires 'ipa' to be a string or absent")
+        if not isinstance(self.pos, list) or not all(isinstance(p, str) for p in self.pos):
+            raise VocabularyItemError("VocabularyItem requires 'pos' to be a list of labels")
 
     @classmethod
     def from_block(cls, block: dict) -> "VocabularyItem":
@@ -44,6 +50,7 @@ class VocabularyItem:
                 f"vocabulary block missing 'english' or 'chinese': {block!r}"
             )
         ipa, ipa_problem = normalize_ipa(block.get("ipa"))
+        pos, pos_problem = normalize_pos(block.get("pos"))
         return cls(
             english=block["english"],
             chinese=block["chinese"],
@@ -51,6 +58,8 @@ class VocabularyItem:
             group=block.get("group"),
             ipa=ipa,
             ipa_problem=ipa_problem,
+            pos=pos or [],
+            pos_problem=pos_problem,
         )
 
     def accepted_expressions(self) -> list[str]:

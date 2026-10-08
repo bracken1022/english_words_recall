@@ -139,3 +139,67 @@ def test_bad_replies(mock_post, response):
 def test_never_raises_on_unexpected_error(mock_post):
     mock_post.side_effect = requests.RequestException("boom")
     assert _call().outcome == "bad_reply"
+
+
+# --- spec 019: part of speech in its own request (contracts/enrichment-pos-delta.md) ---
+
+from src.services.enrichment_client import request_pos
+
+
+def _pos_reply(**overrides):
+    payload = {"pos": ["adj."]}
+    payload.update(overrides)
+    return _FakeResponse(200, _content(payload))
+
+
+def _call_pos(english="zealous", chinese="热心的；热情的"):
+    return request_pos(english, chinese, base_url=BASE, model="m1")
+
+
+@patch("src.services.llm_client.requests.post")
+def test_meaning_request_does_not_ask_for_pos(mock_post):
+    mock_post.return_value = _reply()
+    _call()
+    payload = mock_post.call_args.kwargs["json"]
+    assert "pos" not in payload["format"]["properties"]
+    assert "part of speech" not in payload["messages"][0]["content"].casefold()
+
+
+@patch("src.services.llm_client.requests.post")
+def test_pos_request_shape(mock_post):
+    mock_post.return_value = _pos_reply()
+    _call_pos()
+    assert mock_post.call_count == 1
+    payload = mock_post.call_args.kwargs["json"]
+    assert payload["model"] == "m1"
+    assert payload["think"] is False
+    assert payload["options"]["temperature"] == 0
+    assert payload["format"]["required"] == ["pos"]
+    user = payload["messages"][-1]["content"]
+    assert 'English: "zealous"' in user
+    assert 'Meaning: "热心的；热情的"' in user
+    system = payload["messages"][0]["content"]
+    for phrase in ("phr. v.", "Most words have exactly one", "only if one of the meanings"):
+        assert phrase in system
+
+
+@patch("src.services.llm_client.requests.post")
+def test_pos_reply_is_read(mock_post):
+    mock_post.return_value = _pos_reply(pos=["n.", "v."], group="x")
+    reply = _call_pos()
+    assert (reply.outcome, reply.pos) == ("ok", ["n.", "v."])
+
+
+@pytest.mark.parametrize("bad", ["adj.", ["adj.", 3]])
+@patch("src.services.llm_client.requests.post")
+def test_bad_pos_type_is_bad_reply(mock_post, bad):
+    mock_post.return_value = _pos_reply(pos=bad)
+    assert _call_pos().outcome == "bad_reply"
+
+
+@patch("src.services.llm_client.requests.post")
+def test_pos_request_unavailable(mock_post):
+    import requests
+
+    mock_post.side_effect = requests.ConnectionError()
+    assert _call_pos().outcome == "unavailable"

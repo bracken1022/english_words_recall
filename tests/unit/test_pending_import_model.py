@@ -89,6 +89,8 @@ def test_to_api_shape():
         "existing",
         "choice",
         "duplicate_of",
+        "pos",  # spec 019
+        "pos_review",  # spec 019
     }
     assert api["items"][0]["ipa"] == "ˈzeləs"
 

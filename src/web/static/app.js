@@ -229,8 +229,38 @@
     }
   }
 
-  function renderMeanings(chinese) {
+  // Part-of-speech labels (spec 019), shown before the meaning as a hint.
+  const POS_NAMES = {
+    "n.": "noun",
+    "v.": "verb",
+    "adj.": "adjective",
+    "adv.": "adverb",
+    "prep.": "preposition",
+    "conj.": "conjunction",
+    "pron.": "pronoun",
+    "det.": "determiner",
+    "int.": "interjection",
+    "num.": "number",
+    "phr. v.": "phrasal verb",
+    "phr.": "phrase or idiom",
+  };
+
+  function posList(pos) {
+    if (!pos || pos.length === 0) return null;
+    const list = el("span", "pos-list");
+    for (const label of pos) {
+      const node = el("span", "pos", label);
+      node.title = POS_NAMES[label] || label;
+      node.setAttribute("aria-label", POS_NAMES[label] || label);
+      list.append(node);
+    }
+    return list;
+  }
+
+  function renderMeanings(chinese, pos) {
     chineseEl.replaceChildren();
+    const labels = posList(pos);
+    if (labels) chineseEl.append(labels);
     splitMeanings(chinese).forEach((meaning, index) => {
       if (index > 0) {
         const sep = el("span", "meaning-sep", "/");
@@ -242,7 +272,7 @@
   }
 
   function renderRecall(state) {
-    renderMeanings(state.chinese);
+    renderMeanings(state.chinese, state.pos);
     answerInput.value = "";
     answerInput.readOnly = false;
     delete answerInput.dataset.result;
@@ -262,7 +292,7 @@
   function renderRecallResult(state) {
     const accepted = state.accepted_expressions || [];
     const answer = state.answer || "";
-    renderMeanings(state.chinese);
+    renderMeanings(state.chinese, state.pos);
     answerInput.value = answer;
     answerInput.readOnly = true;
     answerInput.dataset.result = state.correct ? "correct" : "wrong";
@@ -303,7 +333,10 @@
     const accepted = state.accepted_expressions || [];
     targetExpressionEl.textContent = accepted[0] || "";
     targetIpaEl.textContent = state.ipa ? `/${state.ipa}/` : "";
-    targetMeaningEl.textContent = splitMeanings(state.chinese).join(" · ");
+    const meaning = document.createTextNode(splitMeanings(state.chinese).join(" · "));
+    const labels = posList(state.pos);
+    if (labels) targetMeaningEl.replaceChildren(labels, meaning);
+    else targetMeaningEl.replaceChildren(meaning);
     sentenceInput.value = "";
     sentenceInput.disabled = false;
     spinnerEl.hidden = true;
@@ -389,6 +422,8 @@
     head.append(el("h2", null, word));
     const pronunciation = ipaEl(state.ipa);
     if (pronunciation) head.append(pronunciation);
+    const labels = posList(state.pos);
+    if (labels) head.append(labels);
     feedbackResultEl.append(head);
 
     let kind;
@@ -909,10 +944,15 @@
   }
 
   function importChinese(item) {
-    if (!item.chinese) return el("span", "text-muted", "—");
+    if (!item.chinese) return [el("span", "text-muted", "—")];
     const span = el("span", "import-zh", item.chinese);
     span.lang = "zh-Hans";
-    return span;
+    if (item.pos_review) {
+      const badge = el("span", "badge-review", "Part of speech needs review");
+      badge.title = item.pos_review;
+      return [badge, span];
+    }
+    return [posList(item.pos), span];
   }
 
   function importAlternates(item) {
@@ -947,6 +987,7 @@
       ),
     ];
     const now = [
+      item.existing.pos ? item.existing.pos.join(" ") : null,
       item.existing.ipa ? `/${item.existing.ipa}/` : null,
       item.existing.chinese,
       item.existing.alternates.length ? item.existing.alternates.join(", ") : null,
@@ -975,7 +1016,7 @@
     row.append(
       importCell("English", el("span", "import-english", item.english), ...importExisting(item)),
       importCell("IPA", importIpa(item)),
-      importCell("中文", importChinese(item)),
+      importCell("中文", ...importChinese(item)),
       importCell("Alternates", ...importAlternates(item)),
       importCell("Status", ...importItemStatus(item, running)),
     );
