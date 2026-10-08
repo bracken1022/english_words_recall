@@ -201,6 +201,10 @@
     setActions();
     if (state.step !== "sentence") stopRecording(true);
 
+    if (!keepRemoveToast) hideRemoveToast();
+    keepRemoveToast = false;
+    placeRemoveButton(state);
+
     if (state.step === "recall") {
       showOnly("recall");
       renderRecall(state);
@@ -1197,6 +1201,95 @@
     if (!resp) return;
     renderImport(null);
   }
+
+  // --- remove word (spec 020) ---------------------------------------------
+  // Removes the current word from the learner's practice for good (their
+  // own list file loses the entry; a shared word is hidden for them), with
+  // an Undo until their next action (contracts/remove-word-ui.md).
+
+  const removeWordButton = document.getElementById("remove-word-button");
+  const removeToastEl = document.getElementById("remove-toast");
+  const removeToastTextEl = document.getElementById("remove-toast-text");
+  const undoRemoveButton = document.getElementById("undo-remove-button");
+  const recallHintsHome = removeWordButton.parentNode;
+  let keepRemoveToast = false;
+  let removeToastTimer = null;
+
+  function placeRemoveButton(state) {
+    const steps = ["recall", "reveal", "sentence"];
+    removeWordButton.hidden = state.word_source === undefined || !steps.includes(state.step);
+    if (removeWordButton.hidden) return;
+    if (state.step === "reveal" || (state.step === "sentence" && sentenceIntro)) {
+      if (removeWordButton.parentNode !== stepActionsEl) stepActionsEl.append(removeWordButton);
+    } else if (state.step === "sentence") {
+      // Beside Skip, before the right-aligned keyboard hint.
+      if (skipButton.nextElementSibling !== removeWordButton) skipButton.after(removeWordButton);
+    } else if (removeWordButton.parentNode !== recallHintsHome) {
+      recallHintsHome.append(removeWordButton);
+    }
+  }
+
+  function hideRemoveToast() {
+    clearTimeout(removeToastTimer);
+    removeToastEl.hidden = true;
+  }
+
+  function showRemoveToast(english, canUndo) {
+    removeToastTextEl.textContent = `Removed “${english}”.`;
+    undoRemoveButton.hidden = !canUndo;
+    removeToastEl.hidden = false;
+    clearTimeout(removeToastTimer);
+    removeToastTimer = setTimeout(hideRemoveToast, 15000);
+  }
+
+  async function removeWord() {
+    if (busy || !currentState) return;
+    const revealed = currentState.step !== "recall";
+    const word = revealed
+      ? (currentState.accepted_expressions || [])[0]
+      : `the word for “${currentState.chinese}”`;
+    const named = revealed ? `“${word}”` : word;
+    if (!confirm(`Remove ${named} from your words? You can undo this only until you move on.`)) {
+      return;
+    }
+    busy = true;
+    try {
+      const resp = await postJson("/api/remove-word");
+      if (!resp) return;
+      const data = await resp.json();
+      if (!resp.ok) {
+        alert(data.error);
+        return;
+      }
+      sentenceIntro = false;
+      keepRemoveToast = true;
+      renderState(data.state);
+      showRemoveToast(data.removed.english, data.undo);
+    } finally {
+      busy = false;
+    }
+  }
+
+  async function undoRemove() {
+    if (busy) return;
+    busy = true;
+    try {
+      const resp = await postJson("/api/undo-remove");
+      if (!resp) return;
+      const data = await resp.json();
+      hideRemoveToast();
+      if (!resp.ok) {
+        alert(data.error);
+        return;
+      }
+      renderState(data);
+    } finally {
+      busy = false;
+    }
+  }
+
+  removeWordButton.addEventListener("click", removeWord);
+  undoRemoveButton.addEventListener("click", undoRemove);
 
   // --- login (spec 015) -----------------------------------------------------
 

@@ -528,3 +528,33 @@ def test_upload_hint_shows_pos_example():
     html = TEMPLATE_PATH.read_text(encoding="utf-8")
     start = html.index('id="upload-format-hint"')
     assert "v." in html[start : html.index("</p>", start)]
+
+
+# --- spec 020: remove this word ------------------------------------------------
+
+
+def _remove_js_section() -> str:
+    js = JS_PATH.read_text(encoding="utf-8")
+    start = js.index("// --- remove word (spec 020)")
+    end = js.index("// ---", start + 10)
+    return js[start:end]
+
+
+def test_remove_word_markup():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    hints = html.index('id="recall-hints"')
+    assert hints < html.index('id="remove-word-button"') < html.index("</div>", hints)
+    assert re.search(r'id="remove-toast"[^>]*role="status"[^>]*hidden', html)
+
+
+def test_app_js_remove_word():
+    section = _remove_js_section()
+    assert "/api/remove-word" in section
+    assert "from your words? You can undo this only until you move on." in section
+    assert "Removed “" in section
+    assert "innerHTML" not in section
+
+
+def test_app_js_undo_remove():
+    assert "/api/undo-remove" in _remove_js_section()
+    assert 'id="undo-remove-button"' in TEMPLATE_PATH.read_text(encoding="utf-8")

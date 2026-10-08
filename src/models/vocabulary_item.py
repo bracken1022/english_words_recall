@@ -1,6 +1,7 @@
 """VocabularyItem: a single English expression to learn (data-model.md)."""
 
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from src.lib.ipa import normalize_ipa
 from src.lib.pos import normalize_pos
@@ -24,6 +25,8 @@ class VocabularyItem:
     # Part-of-speech labels (spec 019), e.g. ["n.", "v."]; never graded.
     pos: list[str] = field(default_factory=list)
     pos_problem: str | None = field(default=None, compare=False, repr=False)
+    # The file the word was loaded from (spec 020), so it can be removed.
+    source: Path | None = field(default=None, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.english, str):

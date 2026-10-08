@@ -36,6 +36,21 @@ class SessionRegistry:
             return self._vocab_dir
         return self._word_lists.effective_dir(account, self._vocab_dir)
 
+    def _item_filter(self, account: Account):
+        """Drop the shared words this account removed (spec 020). Words
+        removed from its own lists are deleted from the files instead."""
+        store = self._word_lists
+        if store is None:
+            return None
+
+        def keep_visible(items):
+            if store.word_source(account) == "own":
+                return items
+            hidden = store.hidden_shared(account)
+            return [i for i in items if (i.group, i.english, i.chinese) not in hidden]
+
+        return keep_visible
+
     def _new_session(self, account: Account) -> PracticeSession:
         return PracticeSession(
             vocab_dir=self._vocab_dir_for(account),
@@ -44,6 +59,7 @@ class SessionRegistry:
             offer_choice=self._offer_choice,
             order=self._order,
             mode=self._mode,
+            item_filter=self._item_filter(account),
         )
 
     def get(self, account: Account) -> PracticeSession:

@@ -30,6 +30,7 @@ def load_vocabulary(vocab_dir: Path) -> tuple[list[VocabularyItem], list[str]]:
             except VocabularyItemError as exc:
                 warnings.append(f"{md_file.name}: {exc}")
                 continue
+            item.source = md_file
             items.append(item)
             if item.ipa_problem:
                 warnings.append(

@@ -334,18 +334,71 @@ def create_app(
                 return jsonify({"error": "Nothing to discard."}), 404
             return jsonify({"discarded": True})
 
+    if accounts is not None and store is not None:
+        # Spec 020: remove the current word from practice for good.
+
+        def _remove_fn(account: Account):
+            def remove(item):
+                source = item.source
+                own = source is not None and Path(source).resolve().is_relative_to(
+                    store.folder(account).resolve()
+                )
+                if own:
+                    try:
+                        return ("own", store.remove_word(account, source, item.english, item.chinese))
+                    except KeyError:
+                        return None  # already gone (e.g. another device)
+                store.hide_shared(account, item.group, item.english, item.chinese)
+                return ("shared", (item.group, item.english, item.chinese))
+
+            return remove
+
+        @app.post("/api/remove-word")
+        def post_remove_word():
+            account = _current_account()
+            session = _current_session()
+            try:
+                removed = session.remove_current(_remove_fn(account))
+            except WrongStepError:
+                return jsonify({"error": "There's no word to remove right now."}), 409
+            except OSError:
+                return jsonify({"error": "Couldn't remove the word; nothing was changed."}), 500
+            undo = session.pending_undo is not None and session.pending_undo["token"] is not None
+            return jsonify({"state": _state_json(), "removed": removed, "undo": undo})
+
+        def _restore(account: Account, token) -> None:
+            kind, value = token
+            if kind == "own":
+                store.restore_word(account, value)
+            else:
+                store.unhide_shared(account, *value)
+
+        @app.post("/api/undo-remove")
+        def post_undo_remove():
+            account = _current_account()
+            try:
+                _current_session().undo_remove(lambda token: _restore(account, token))
+            except WrongStepError:
+                return jsonify({"error": "Nothing to undo."}), 409
+            except OSError:
+                return jsonify({"error": "Couldn't restore the word."}), 500
+            return jsonify(_state_json())
+
     @app.get("/")
     def index():
         return render_template("index.html")
 
-    @app.get("/api/state")
-    def get_state():
+    def _state_json() -> dict:
         state = {**_current_session().state(), "voice_available": app.config["VOICE_AVAILABLE"]}
         if accounts is not None:
             state["account"] = _account_json(_current_account())
             if store is not None:
                 state["word_source"] = store.word_source(_current_account())
-        return jsonify(state)
+        return state
+
+    @app.get("/api/state")
+    def get_state():
+        return jsonify(_state_json())
 
     @app.post("/api/transcribe")
     def post_transcribe():

@@ -32,6 +32,7 @@ class PracticeSession:
         offer_choice: bool = False,
         order: str = "sequential",
         mode: str = "sentence",
+        item_filter=None,
     ):
         """*offer_choice* opts into the interactive collection-choice step
         (spec 007); it defaults to False so every existing caller that
@@ -58,8 +59,11 @@ class PracticeSession:
         self.last_correction: CorrectionResult | None = None
         self._review_in_progress = False
         self.correct_count = 0
+        # Spec 020: drops words this learner removed from the shared sets.
+        self.item_filter = item_filter
+        self.pending_undo: dict | None = None
 
-        items, warnings = load_vocabulary(vocab_dir)
+        items, warnings = self._load(vocab_dir)
         self.warnings = warnings
         self.all_items = items
 
@@ -78,6 +82,12 @@ class PracticeSession:
             self.items = items
             self.recall_only = mode == "recall-only"
             self.step = "recall" if self.items else "empty"
+
+    def _load(self, vocab_dir: Path) -> tuple[list, list[str]]:
+        items, warnings = load_vocabulary(vocab_dir)
+        if self.item_filter is not None:
+            items = self.item_filter(items)
+        return items, warnings
 
     @property
     def current_item(self):
@@ -109,6 +119,7 @@ class PracticeSession:
         return collections
 
     def submit_answer(self, answer: str) -> dict:
+        self.pending_undo = None
         if self.step != "recall":
             raise WrongStepError("not awaiting an answer")
 
@@ -141,6 +152,7 @@ class PracticeSession:
         model: str,
         correction_fn: Callable[..., CorrectionResult] | None = None,
     ) -> dict:
+        self.pending_undo = None
         if self.step != "sentence":
             raise WrongStepError("not awaiting a sentence")
         if self._review_in_progress:
@@ -194,6 +206,7 @@ class PracticeSession:
         is "random" (spec 011), in which case it's shuffled once here.
         *mode* ("sentence" [default] or "recall-only", spec 012) resolves
         self.recall_only for the whole session that follows."""
+        self.pending_undo = None
         if self.step != "choose":
             raise WrongStepError("not choosing a collection")
 
@@ -219,6 +232,7 @@ class PracticeSession:
         correction request, recording the recall outcome as-is (spec 006).
         Goes straight from "sentence" to "recall"/"complete", never
         visiting "feedback" — see data-model.md's state-machine table."""
+        self.pending_undo = None
         if self.step != "sentence":
             raise WrongStepError("not awaiting a sentence")
 
@@ -243,10 +257,11 @@ class PracticeSession:
         vocabulary from disk so files added/removed/edited since this
         session started are picked up. Valid only from "complete", and
         only when a collection wasn't locked in at startup."""
+        self.pending_undo = None
         if self.step != "complete" or self.group_locked:
             raise WrongStepError("not ready to restart")
 
-        items, warnings = load_vocabulary(self.vocab_dir)
+        items, warnings = self._load(self.vocab_dir)
         self.warnings = warnings
         self.all_items = items
         self.step = "choose" if self.all_items else "empty"
@@ -260,7 +275,7 @@ class PracticeSession:
         self.vocab_dir = vocab_dir
         if self.group_locked or self.step not in ("choose", "empty"):
             return
-        items, warnings = load_vocabulary(vocab_dir)
+        items, warnings = self._load(vocab_dir)
         self.warnings = warnings
         self.all_items = items
         self.step = "choose" if self.all_items else "empty"
@@ -270,12 +285,13 @@ class PracticeSession:
         screen (Broadsheet redesign's "End session"). The word in progress
         is discarded unrecorded; words already finished stay recorded.
         Only offered when a collection wasn't locked in at startup."""
+        self.pending_undo = None
         if self.group_locked or self.step not in ("recall", "sentence", "feedback", "reveal"):
             raise WrongStepError("no session to end")
 
         self.pending_attempt = None
         self.last_correction = None
-        items, warnings = load_vocabulary(self.vocab_dir)
+        items, warnings = self._load(self.vocab_dir)
         self.warnings = warnings
         self.all_items = items
         self.step = "choose" if self.all_items else "empty"
@@ -284,6 +300,7 @@ class PracticeSession:
         """Go back from "feedback" to "sentence" for the same word
         (Broadsheet redesign's "Try another sentence"). The reviewed
         sentence stays in the progress log; the next one is logged too."""
+        self.pending_undo = None
         if self.step != "feedback":
             raise WrongStepError("no sentence feedback to retry")
 
@@ -293,6 +310,7 @@ class PracticeSession:
         self.step = "sentence"
 
     def continue_to_next(self) -> None:
+        self.pending_undo = None
         if self.step == "complete":
             return
         if self.step == "reveal":
@@ -306,6 +324,50 @@ class PracticeSession:
             raise WrongStepError("not ready to continue")
 
         self._advance_after_attempt(self.pending_attempt["correct"])
+
+    def remove_current(self, remove_fn) -> dict:
+        """Take the current word out of practice for good (spec 020).
+        *remove_fn(item)* deletes it from its file (or hides it) and
+        returns what undo needs; it runs first, so a failure leaves the
+        session as it was. An attempt already made is logged as on
+        continue/skip; at recall nothing was answered, so nothing is."""
+        if self.step not in ("recall", "reveal", "sentence"):
+            raise WrongStepError("no word to remove")
+        item = self.current_item
+        token = remove_fn(item)
+
+        if self.step in ("reveal", "sentence"):
+            append_attempt(self.progress_file, PracticeAttempt(**self.pending_attempt))
+            if self.pending_attempt["correct"]:
+                self.correct_count += 1
+        self.pending_attempt = None
+        self.last_correction = None
+
+        index = self.current_index
+        del self.items[index]
+        all_index = None
+        if self.all_items is not self.items:  # a locked session shares one list
+            all_index = next(i for i, other in enumerate(self.all_items) if other is item)
+            del self.all_items[all_index]
+        self.step = "complete" if self.current_index >= len(self.items) else "recall"
+        self.pending_undo = {"item": item, "index": index, "all_index": all_index, "token": token}
+        return {"english": item.english, "chinese": item.chinese}
+
+    def undo_remove(self, restore_fn) -> None:
+        """Bring back the word removed last, as the current word, if the
+        learner hasn't done anything since. *restore_fn(token)* puts it
+        back in its file first, so a failure changes nothing here."""
+        if self.pending_undo is None:
+            raise WrongStepError("nothing to undo")
+        undo = self.pending_undo
+        if undo["token"] is not None:
+            restore_fn(undo["token"])
+        self.items.insert(undo["index"], undo["item"])
+        if undo["all_index"] is not None:
+            self.all_items.insert(undo["all_index"], undo["item"])
+        self.current_index = undo["index"]
+        self.step = "recall"
+        self.pending_undo = None
 
     def state(self) -> dict:
         base = {"step": self.step, "warnings": self.warnings}

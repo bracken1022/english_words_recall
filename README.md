@@ -288,6 +288,21 @@ them separately from everyone else.
 - Limits: 1 MB and 5,000 words per file. Lists are saved as readable
   Markdown in `word-lists/<username>/` (gitignored).
 
+#### Removing words
+
+To stop practicing a word, press **Remove this word**. It is next to
+"Show answer" while you recall the word, and among the buttons after the
+answer or on the sentence step. After you confirm:
+
+- **From your own list**: the word is deleted from that list file, and
+  nothing else in the file changes.
+- **From the shared word sets**: the word is hidden for you only.
+  Everyone else still sees it.
+
+**Undo** brings the word back exactly as it was, until you do anything
+else. After that the removal is final; re-uploading a list that contains
+the word brings it back. Your practice history is always kept.
+
 #### Automatic meanings and pronunciations
 
 You can upload bare English words, one per line, as a `.txt`, `.csv`

@@ -6,6 +6,7 @@ as vocabulary Markdown under <root>/<username>/<name>.md, so an account's
 folder is just another vocabulary directory for load_vocabulary()."""
 
 import csv
+import json
 import os
 import re
 import shutil
@@ -61,6 +62,17 @@ class ParsedUpload:
     # VocabularyItems by default; DraftWords with require_chinese=False.
     items: list = field(default_factory=list)
     skipped: list[str] = field(default_factory=list)
+
+
+@dataclass
+class RemovedEntry:
+    """One entry cut from a learner's list file, kept so it can be undone
+    exactly (spec 020, data-model.md)."""
+
+    path: Path
+    offset: int
+    text: str
+    file_after: str
 
 
 @dataclass
@@ -319,6 +331,18 @@ def _updated_block(block: dict, fields: dict) -> dict:
     return updated
 
 
+def _write_text(path: Path, text: str) -> None:
+    with tempfile.NamedTemporaryFile(
+        "w", encoding="utf-8", dir=path.parent, suffix=".tmp", delete=False, newline=""
+    ) as tmp:
+        tmp.write(text)
+    try:
+        os.replace(tmp.name, path)
+    except BaseException:
+        Path(tmp.name).unlink(missing_ok=True)
+        raise
+
+
 def _write_all_or_nothing(writes: dict[Path, str]) -> None:
     """Write every file, or (on any error) leave every file as it was:
     stage temp files, back up the originals, then swap each into place."""
@@ -459,6 +483,90 @@ class WordListStore:
                 chunks.append(_dump_block(block))
             rendered[path] = "\n".join(chunks)
         return rendered
+
+    # --- removing single words (spec 020) ---------------------------------
+
+    def _own_path(self, account: Account, path: Path) -> Path:
+        resolved = Path(path).resolve()
+        if not resolved.is_relative_to(self.folder(account).resolve()):
+            raise ValueError(f"{path} is not one of {account.username}'s lists")
+        return resolved
+
+    def remove_word(self, account: Account, path: Path, english: str, chinese: str) -> RemovedEntry:
+        """Cut the first block matching *english* and *chinese* out of one of
+        the account's list files; every other byte stays the same."""
+        with self._lock(account):
+            target = self._own_path(account, path)
+            text = target.read_text(encoding="utf-8")
+            for match in _BLOCK_RE.finditer(text):
+                blocks, _ = parse_blocks(match.group(0))
+                if not blocks:
+                    continue
+                block = blocks[0]
+                if str(block.get("english", "")).strip() == english.strip() and str(
+                    block.get("chinese", "")
+                ).strip() == chinese.strip():
+                    start, end = match.start(), match.end()
+                    if text[end : end + 1] == "\n":
+                        end += 1  # the block's own line end
+                    if text[end : end + 1] == "\n":
+                        end += 1  # one separator line after it
+                    elif start > 0 and text[start - 1 : start] == "\n" and end >= len(text):
+                        start -= 1  # last block: take the separator before it
+                    after = text[:start] + text[end:]
+                    _write_text(target, after)
+                    return RemovedEntry(target, start, text[start:end], after)
+            raise KeyError(english)
+
+    def restore_word(self, account: Account, removed: RemovedEntry) -> None:
+        """Put a cut entry back: exactly where it was if the file is as the
+        cut left it, otherwise before the first block at or after that
+        place, so nothing is lost."""
+        with self._lock(account):
+            target = self._own_path(account, removed.path)
+            text = target.read_text(encoding="utf-8") if target.exists() else ""
+            if text == removed.file_after:
+                restored = text[: removed.offset] + removed.text + text[removed.offset :]
+            else:
+                starts = [m.start() for m in _BLOCK_RE.finditer(text) if m.start() >= removed.offset]
+                entry = removed.text.strip("\n") + "\n"
+                if starts:
+                    restored = text[: starts[0]] + entry + "\n" + text[starts[0] :]
+                else:
+                    restored = (text.rstrip("\n") + "\n\n" if text.strip() else "") + entry
+            _write_text(target, restored)
+
+    def _hidden_path(self, account: Account) -> Path:
+        return self.folder(account) / ".hidden-shared.json"
+
+    def _read_hidden(self, account: Account) -> list[dict]:
+        try:
+            data = json.loads(self._hidden_path(account).read_text(encoding="utf-8"))
+            return [h for h in data.get("hidden", []) if isinstance(h, dict)]
+        except (OSError, ValueError, AttributeError):
+            return []
+
+    def _write_hidden(self, account: Account, hidden: list[dict]) -> None:
+        path = self._hidden_path(account)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _write_text(path, json.dumps({"version": 1, "hidden": hidden}, ensure_ascii=False, indent=2))
+
+    def hidden_shared(self, account: Account) -> set[tuple]:
+        """Shared words this account removed: (group, english, chinese)."""
+        return {(h.get("group"), h.get("english"), h.get("chinese")) for h in self._read_hidden(account)}
+
+    def hide_shared(self, account: Account, group, english: str, chinese: str) -> None:
+        with self._lock(account):
+            hidden = self._read_hidden(account)
+            entry = {"group": group, "english": english, "chinese": chinese}
+            if entry not in hidden:
+                hidden.append(entry)
+            self._write_hidden(account, hidden)
+
+    def unhide_shared(self, account: Account, group, english: str, chinese: str) -> None:
+        with self._lock(account):
+            entry = {"group": group, "english": english, "chinese": chinese}
+            self._write_hidden(account, [h for h in self._read_hidden(account) if h != entry])
 
     def list(self, account: Account) -> list[dict]:
         lists = []

@@ -833,3 +833,16 @@ p { margin: 0; }
 .target-meaning .pos-list { font-size: inherit; }
 .feedback-head .pos-list { font-size: 18px; margin-left: var(--space-2); }
 .import-preview .pos-list { font-size: 13px; }
+
+/* — remove word (spec 020) — */
+
+.remove-toast {
+  display: flex; align-items: center; flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  font-size: 15px;
+}

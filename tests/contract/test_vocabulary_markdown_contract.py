@@ -157,3 +157,24 @@ def test_pos_field_loads_and_bad_value_warns(tmp_path: Path):
 def test_files_without_pos_have_no_new_warnings(tmp_path: Path):
     (tmp_path / "w.md").write_text("---\nenglish: plain\nchinese: 平的\n---\n", encoding="utf-8")
     assert load_vocabulary(tmp_path)[1] == []
+
+
+# --- spec 020: each loaded word knows its file ---------------------------------
+
+
+def test_items_carry_their_source_file(tmp_path: Path):
+    (tmp_path / "a.md").write_text("---\nenglish: river\nchinese: 河\n---\n", encoding="utf-8")
+    (tmp_path / "b.md").write_text("---\nenglish: lake\nchinese: 湖\n---\n", encoding="utf-8")
+    items, _ = load_vocabulary(tmp_path)
+    assert [(i.english, i.source) for i in items] == [
+        ("river", tmp_path / "a.md"),
+        ("lake", tmp_path / "b.md"),
+    ]
+
+
+def test_source_is_not_compared_or_shown():
+    from src.models.vocabulary_item import VocabularyItem
+
+    a = VocabularyItem("river", "河", source=Path("a.md"))
+    assert a == VocabularyItem("river", "河", source=Path("b.md"))
+    assert "source" not in repr(a)

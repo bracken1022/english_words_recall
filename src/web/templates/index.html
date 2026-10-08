@@ -100,10 +100,12 @@
       <div id="recall-hints" class="hint-row">
         <span class="key-hint"><kbd class="tag tag-neutral">Enter</kbd> to check</span>
         <button id="show-answer-button" type="button" class="btn btn-ghost">Show answer</button>
+        <button id="remove-word-button" type="button" class="btn btn-ghost" hidden>Remove this word</button>
       </div>
     </section>
 
     <div id="word-feedback" class="word-feedback" aria-live="polite" hidden></div>
+    <div id="remove-toast" class="remove-toast" role="status" hidden><span id="remove-toast-text"></span> <button id="undo-remove-button" type="button" class="btn btn-ghost">Undo</button></div>
 
     <section id="sentence-view" class="screen" hidden>
       <span class="tag tag-accent recalled-tag"><i class="ph-duotone ph-check-circle" aria-hidden="true"></i>Recalled</span>
