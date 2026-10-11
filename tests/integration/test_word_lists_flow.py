@@ -182,7 +182,7 @@ def test_same_list_name_for_two_accounts(tmp_path: Path):
 def test_upload_mid_session_does_not_disturb_it(tmp_path: Path):
     app = _make_app(tmp_path)
     phone, laptop = _login(app, "lily"), _login(app, "lily")
-    phone.post("/api/select", json={"collection": "shared-set", "mode": "sentence"})
+    phone.post("/api/select", json={"collection": "shared-set", "mode": "example"})
     before = _state(phone)
     _upload(laptop, UNIT1, "unit1.csv")
     after = _state(phone)

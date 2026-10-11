@@ -24,7 +24,7 @@ def test_word_feedback_element_exists_outside_step_sections():
     assert 'id="word-feedback"' in html
 
     feedback_pos = html.index('id="word-feedback"')
-    for section_id in ("recall-view", "sentence-view", "feedback-view"):
+    for section_id in ("recall-view",):
         section_start, section_end = _section_bounds(html, section_id)
         assert not (section_start < feedback_pos < section_end), (
             f"word-feedback element must not be nested inside #{section_id}"
@@ -38,10 +38,11 @@ def test_style_defines_feedback_color_classes():
 
 
 def test_app_js_uses_the_requested_feedback_wording():
-    """Broadsheet redesign: recall and review results are rubber stamps
-    whose wording carries the verdict as well as the color."""
+    """Broadsheet redesign: recall results are rubber stamps whose wording
+    carries the verdict as well as the color (spec 021 removed the review
+    stamps "Natural" / "Small fix")."""
     js = JS_PATH.read_text(encoding="utf-8")
-    for label in ('"Correct"', '"Not quite"', '"Natural"', '"Small fix"'):
+    for label in ('"Correct"', '"Not quite"'):
         assert label in js, f"app.js missing stamp wording {label}"
 
 
@@ -65,9 +66,9 @@ def test_style_defines_field_row_layout():
     assert ".field-row" in css
 
 
-def test_answer_and_sentence_forms_use_field_row():
+def test_answer_form_uses_field_row():
     html = TEMPLATE_PATH.read_text(encoding="utf-8")
-    for form_id, input_id in (("answer-form", "answer-input"), ("sentence-form", "sentence-input")):
+    for form_id, input_id in (("answer-form", "answer-input"),):
         form_start = html.index(f'id="{form_id}"')
         form_end = html.index("</form>", form_start)
         form_html = html[form_start:form_end]
@@ -91,16 +92,6 @@ def test_hidden_attribute_override_rule_exists():
     )
 
 
-def test_app_js_confirms_before_skipping_an_empty_sentence():
-    """Spec 006: submitting the sentence step with an empty/whitespace-only
-    sentence must show a confirmation prompt and call POST /api/skip,
-    rather than silently sending nothing off for correction."""
-    js = JS_PATH.read_text(encoding="utf-8")
-    assert ".trim()" in js
-    assert "confirm(" in js
-    assert "/api/skip" in js
-
-
 def test_app_js_renders_choose_view_from_state_collections():
     """Spec 007: the choice screen's entries are rendered client-side from
     GET /api/state's `collections` list, each posting its own key to
@@ -109,17 +100,6 @@ def test_app_js_renders_choose_view_from_state_collections():
     assert "state.collections" in js
     assert "/api/select" in js
     assert "choose-view" in js
-
-
-def test_app_js_wires_up_voice_input():
-    """Spec 009: recording is captured via MediaRecorder and uploaded to
-    /api/transcribe; the mic control's visibility follows state.voice_available
-    rather than always being shown."""
-    js = JS_PATH.read_text(encoding="utf-8")
-    assert "MediaRecorder" in js
-    assert "getUserMedia" in js
-    assert "/api/transcribe" in js
-    assert "voice_available" in js
 
 
 def test_app_js_tracks_order_and_sends_it_with_select():
@@ -172,37 +152,22 @@ def test_choose_view_offers_a_mode_toggle():
     choose_start, choose_end = _section_bounds(html, "choose-view")
     choose_html = html[choose_start:choose_end]
     assert 'name="mode-choice"' in choose_html
-    assert 'value="sentence"' in choose_html
+    assert 'value="example"' in choose_html
     assert 'value="recall-only"' in choose_html
 
 
 def test_continue_button_exists_outside_step_sections():
     """Spec 013: the Continue button must be a persistent element (like
-    #word-feedback), reused for both the "feedback" step (sentence mode)
-    and the new "reveal" step (recall-only wrong answer) — not nested
-    inside #feedback-view, which is hidden for the "reveal" step."""
+    #word-feedback), shown on "reveal" — not nested inside #recall-view."""
     html = TEMPLATE_PATH.read_text(encoding="utf-8")
     assert 'id="continue-button"' in html
 
     button_pos = html.index('id="continue-button"')
-    for section_id in ("recall-view", "sentence-view", "feedback-view"):
+    for section_id in ("recall-view",):
         section_start, section_end = _section_bounds(html, section_id)
         assert not (section_start < button_pos < section_end), (
             f"continue-button must not be nested inside #{section_id}"
         )
-
-
-def test_spinner_uses_hidden_attribute_not_a_separate_mechanism():
-    """Regression guard (spec 005, User Story 2): confirms the spinner is
-    actually covered by the [hidden] override above, rather than using
-    some other visibility mechanism the fix wouldn't reach."""
-    html = TEMPLATE_PATH.read_text(encoding="utf-8")
-    spinner_tag_start = html.index('id="spinner"')
-    tag_open = html.rindex("<", 0, spinner_tag_start)
-    tag_close = html.index(">", spinner_tag_start)
-    spinner_tag = html[tag_open:tag_close]
-    assert "hidden" in spinner_tag.split(), "the spinner element must use the plain `hidden` attribute"
-    assert "style=" not in spinner_tag, "the spinner must not hide itself via an inline style"
 
 
 # --- Broadsheet redesign (design_handoff_english_tutor) ---
@@ -233,8 +198,7 @@ def test_session_controls_are_wired_to_their_endpoints():
     js = JS_PATH.read_text(encoding="utf-8")
     for element_id, endpoint in (
         ("end-session-button", "/api/end"),
-        ("retry-sentence-button", "/api/retry-sentence"),
-        ("skip-button", "/api/skip"),
+        ("new-example-button", "/api/example/new"),
     ):
         assert f'id="{element_id}"' in html
         assert endpoint in js
@@ -256,10 +220,9 @@ def test_review_shortcut_accepts_cmd_or_ctrl_enter():
     assert "metaKey" in js and "ctrlKey" in js
 
 
-def test_check_and_review_buttons_disable_when_empty():
+def test_check_button_disables_when_empty():
     js = JS_PATH.read_text(encoding="utf-8")
     assert "answerSubmitButton.disabled" in js
-    assert "sentenceSubmitButton.disabled" in js
 
 
 def test_narrow_layout_keeps_touch_targets_at_least_44px():
@@ -372,19 +335,11 @@ def _function_body(js: str, name: str) -> str:
     return js[start:end]
 
 
-def test_sentence_view_has_target_ipa():
-    html = TEMPLATE_PATH.read_text(encoding="utf-8")
-    start, end = _section_bounds(html, "sentence-view")
-    assert re.search(
-        r'<span id="target-ipa" class="ipa" lang="en-GB-fonipa">', html[start:end]
-    )
-
-
 def test_app_js_renders_ipa_after_reveal():
     js = JS_PATH.read_text(encoding="utf-8")
     assert "en-GB-fonipa" in js
     assert '"ipa"' in js
-    for name in ("renderRecallResult", "renderSentence", "renderFeedback"):
+    for name in ("renderRecallResult",):
         assert "state.ipa" in _function_body(js, name), name
 
 
@@ -500,7 +455,7 @@ def test_app_js_shows_pos_labels():
     assert "innerHTML" not in pos_list
     assert "aria-label" in pos_list or "ariaLabel" in pos_list
     assert ".title" in pos_list
-    for name in ("renderRecall", "renderSentence", "renderFeedback"):
+    for name in ("renderRecall", "renderRecallResult"):
         assert "state.pos" in _js_function(js, name), name
     for label, full in [
         ("n.", "noun"), ("v.", "verb"), ("adj.", "adjective"), ("adv.", "adverb"),
@@ -558,3 +513,67 @@ def test_app_js_remove_word():
 def test_app_js_undo_remove():
     assert "/api/undo-remove" in _remove_js_section()
     assert 'id="undo-remove-button"' in TEMPLATE_PATH.read_text(encoding="utf-8")
+
+
+# --- spec 021: example sentences replace sentence review ------------------------
+
+
+def test_mode_choice_offers_example_modes():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    values = re.findall(r'name="mode-choice" value="([^"]+)"', html)
+    assert values == ["recall-only", "example", "example-recall"]
+    assert re.search(r'value="example" checked', html)
+
+
+def test_sentence_review_markup_removed():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    for removed in ('id="sentence-view"', 'id="mic-button"', 'id="feedback-view"'):
+        assert removed not in html
+
+
+def test_app_js_example_block():
+    js = JS_PATH.read_text(encoding="utf-8")
+    for text in ("/api/example/new", "Writing an example…", "No example right now."):
+        assert text in js
+    assert ">New example</button>" in TEMPLATE_PATH.read_text(encoding="utf-8")
+    for removed in ('/api/sentence"', "/api/transcribe", "MediaRecorder"):
+        assert removed not in js
+
+
+def _sentence_recall_js_section() -> str:
+    js = JS_PATH.read_text(encoding="utf-8")
+    start = js.index("// --- sentence recall (spec 021)")
+    end = js.index("// ---", start + 10)
+    return js[start:end]
+
+
+def test_sentence_recall_markup():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    start, end = _section_bounds(html, "sentence-recall-view")
+    section = html[start:end]
+    for element_id in (
+        "sentence-recall-translation",
+        "sentence-recall-input",
+        "show-sentence-button",
+        "skip-sentence-button",
+        "got-it-button",
+        "not-yet-button",
+    ):
+        assert f'id="{element_id}"' in section, element_id
+    assert 'placeholder="Type it, or just say it"' in section
+
+
+def test_app_js_sentence_recall():
+    section = _sentence_recall_js_section()
+    for text in ("/api/sentence-recall", '"reveal"', '"got"', '"not_yet"', '"skip"'):
+        assert text in section, text
+    assert "innerHTML" not in section
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    for text in ("Recall the sentence", "Show sentence", "Got it", "Not yet"):
+        assert text in html, text
+
+
+def test_typed_sentence_attempt_stays_in_the_browser():
+    section = _sentence_recall_js_section()
+    for call in re.findall(r"postJson\([^)]*\)", section):
+        assert "attempt" not in call.lower() and "Input" not in call

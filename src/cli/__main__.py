@@ -37,7 +37,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--model",
         default=DEFAULT_MODEL,
-        help=f"Name of the local Ollama model to use for sentence correction (default: {DEFAULT_MODEL})",
+        help=f"Name of the local Ollama model that writes example sentences (default: {DEFAULT_MODEL})",
     )
     parser.add_argument(
         "--order",
@@ -47,9 +47,12 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--mode",
-        choices=["sentence", "recall-only"],
-        default="sentence",
-        help="Practice mode: sentence-writing or recall only (default: sentence)",
+        choices=["recall-only", "example", "example-recall", "sentence"],
+        default="example",
+        help=(
+            "Practice mode: recall only, recall + example sentence, or recall + example + "
+            "sentence recall (default: example; 'sentence' is accepted as 'example')"
+        ),
     )
     return parser
 

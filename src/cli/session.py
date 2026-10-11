@@ -1,5 +1,8 @@
-"""The interactive recall -> sentence -> correction session loop."""
+"""The interactive recall session loop. After each answer the example
+modes (spec 021) show the word's example sentence, made by the local
+model on first practice and kept for next time."""
 
+import dataclasses
 import random
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -12,12 +15,15 @@ from src.lib.ipa import display_ipa
 from src.lib.pos import display_pos
 from src.models.practice_attempt import PracticeAttempt
 from src.models.vocabulary_item import VocabularyItem
-from src.services.llm_client import DEFAULT_MODEL, request_correction
+from src.services.examples import ExampleService
+from src.services.llm_client import DEFAULT_MODEL
 from src.services.matcher import grade_answer
 from src.services.progress_log import append_attempt
 from src.services.vocabulary_loader import load_vocabulary
 
 console = Console()
+
+EXAMPLE_TIMEOUT = 6.0  # seconds to wait for a new example (spec 021, SC-001)
 
 
 def _default_answer_input(prompt: str) -> str:
@@ -31,6 +37,7 @@ def _wait_for_continue(prompt: str = "Press Enter to continue...") -> None:
 def run_recall_step(
     item: VocabularyItem,
     answer_input: Callable[[], str] | None = None,
+    examples=None,
 ) -> PracticeAttempt:
     """Show the Chinese meaning, collect an answer, grade it, reveal the result.
 
@@ -54,6 +61,8 @@ def run_recall_step(
         console.print(f"[red]Incorrect.[/red] The correct expression(s): {accepted}")
     if item.ipa:
         console.print(f"Pronunciation: {display_ipa(item.ipa)}")
+    if examples is not None:
+        show_example(item, examples)
 
     return PracticeAttempt(
         timestamp=datetime.now(UTC).isoformat(timespec="seconds"),
@@ -63,52 +72,33 @@ def run_recall_step(
     )
 
 
-def run_sentence_step(
-    target_expression: str,
-    sentence_input: Callable[[], str] | None = None,
-    base_url: str = "http://localhost:11434",
-    model: str = DEFAULT_MODEL,
-    ipa: str | None = None,
-) -> tuple[str, str]:
-    """Prompt for a sentence using *target_expression* and show correction
-    feedback from the local LLM. Returns (sentence, feedback_summary), where
-    feedback_summary is a short string suitable for the progress log
-    (FR-006, FR-008, FR-009, FR-010)."""
-    pronunciation = f" {display_ipa(ipa)}" if ipa else ""
-    console.print(f'Write a sentence using "[bold]{target_expression}[/bold]"{pronunciation}:')
-
-    if sentence_input is None:
-        sentence = _default_answer_input("Your sentence: ")
-    else:
-        sentence = sentence_input()
-
-    result = run_with_indicator(
-        console,
-        "Reviewing your sentence...",
-        request_correction,
-        target_expression,
-        sentence,
-        base_url=base_url,
-        model=model,
+def show_example(item: VocabularyItem, examples) -> dict | None:
+    """Print the word's example sentence, making it first if needed."""
+    example = run_with_indicator(
+        console, "Writing an example...", examples.get_or_make, item, EXAMPLE_TIMEOUT
     )
-
-    if not result.available:
-        feedback = "correction unavailable"
-        console.print("[yellow]Sorry, sentence correction is unavailable right now.[/yellow]")
-    elif result.uses_expression is False:
-        feedback = "missing target expression"
-        console.print(f'[yellow]Your sentence does not use "{target_expression}".[/yellow]')
-    elif result.needs_correction:
-        feedback = f"corrected: {result.corrected}"
-        console.print(f"[red]Original:[/red]  {sentence}")
-        console.print(f"[green]Corrected:[/green] {result.corrected}")
-        if result.explanation:
-            console.print(f"Explanation: {result.explanation}")
+    if example:
+        console.print(f"Example: {example['sentence']}")
+        console.print(f"         {example['translation']}")
     else:
-        feedback = "already correct"
-        console.print("[green]Your sentence is already correct and natural.[/green]")
+        console.print("(No example right now.)")
+    return example
 
-    return sentence, feedback
+
+def run_sentence_recall(example: dict) -> str | None:
+    """Self-checked sentence recall (spec 021 US2, contracts/cli.md):
+    show the translation, let the learner try the sentence, reveal it,
+    and return "got" or "not_yet" — or None if they skip."""
+    console.print(f"Recall the sentence: {example['translation']}")
+    if input("Press Enter to show it (s to skip) ").strip().lower() == "s":
+        return None
+    console.print(f"Example: {example['sentence']}")
+    while True:
+        reply = input("Did you get it? [y/n] ").strip().lower()
+        if reply in ("y", "yes"):
+            return "got"
+        if reply in ("n", "no"):
+            return "not_yet"
 
 
 def run_session(
@@ -118,15 +108,21 @@ def run_session(
     ollama_url: str = "http://localhost:11434",
     model: str = DEFAULT_MODEL,
     order: str = "sequential",
-    mode: str = "sentence",
+    mode: str = "example",
 ) -> None:
     """Run a full practice session: load items, filter, then walk forward
     through the recall step for each one, one at a time, no skip/back
     (FR-015, FR-016). *order* ("sequential" [default] or "random", spec
     011) shuffles the filtered pool once, before the walk begins. *mode*
-    ("sentence" [default] or "recall-only", spec 012) skips the
-    sentence-writing step (and any correction request) entirely when set
-    to "recall-only"."""
+    (spec 021: "recall-only", "example" [default] or "example-recall";
+    "sentence" means "example") decides whether each answer is followed
+    by the word's example sentence, and, in "example-recall", by a
+    self-checked recall of that sentence."""
+    if mode not in ("recall-only", "example", "example-recall"):
+        mode = "example"
+    examples = None
+    if mode != "recall-only":
+        examples = ExampleService(None, ollama_url, model).bind(None)
     items, warnings = load_vocabulary(vocab_dir)
     for warning in warnings:
         console.print(f"[yellow]Warning:[/yellow] {warning}")
@@ -142,24 +138,16 @@ def run_session(
         return
 
     for item in items:
-        recall_attempt = run_recall_step(item)
-        if mode == "recall-only":
-            if not recall_attempt.correct:
-                # Wait for an explicit continue before moving on (spec
-                # 013) — a correct answer still advances immediately.
-                _wait_for_continue()
-            attempt = recall_attempt
-        else:
-            sentence, feedback = run_sentence_step(
-                item.english, base_url=ollama_url, model=model, ipa=item.ipa
-            )
-            attempt = PracticeAttempt(
-                timestamp=recall_attempt.timestamp,
-                item=recall_attempt.item,
-                answer=recall_attempt.answer,
-                correct=recall_attempt.correct,
-                sentence=sentence,
-                feedback=feedback,
-            )
+        attempt = run_recall_step(item, examples=examples)
+        if mode != "recall-only" or not attempt.correct:
+            # Wait for an explicit continue before moving on (spec 013),
+            # so the answer and its example can be read.
+            _wait_for_continue()
+        if mode == "example-recall":
+            example = examples.get(item)
+            if example:
+                print()
+                mark = run_sentence_recall(example)
+                attempt = dataclasses.replace(attempt, sentence_recall=mark)
         append_attempt(progress_file, attempt)
         print()

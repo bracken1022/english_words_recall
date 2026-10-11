@@ -50,10 +50,11 @@
         <fieldset class="option-group">
           <legend class="label">Mode</legend>
           <div class="seg">
-            <label class="seg-opt"><input type="radio" name="mode-choice" value="sentence" checked>Sentence</label>
             <label class="seg-opt"><input type="radio" name="mode-choice" value="recall-only">Recall only</label>
+            <label class="seg-opt"><input type="radio" name="mode-choice" value="example" checked>Recall + example</label>
+            <label class="seg-opt"><input type="radio" name="mode-choice" value="example-recall">+ sentence recall</label>
           </div>
-          <p id="mode-hint" class="option-hint">Recall the word, then write or say a sentence with it.</p>
+          <p id="mode-hint" class="option-hint">Recall the word, then see it in a natural example sentence.</p>
         </fieldset>
       </div>
       <div class="word-sets">
@@ -104,41 +105,38 @@
       </div>
     </section>
 
-    <div id="word-feedback" class="word-feedback" aria-live="polite" hidden></div>
-    <div id="remove-toast" class="remove-toast" role="status" hidden><span id="remove-toast-text"></span> <button id="undo-remove-button" type="button" class="btn btn-ghost">Undo</button></div>
-
-    <section id="sentence-view" class="screen" hidden>
-      <span class="tag tag-accent recalled-tag"><i class="ph-duotone ph-check-circle" aria-hidden="true"></i>Recalled</span>
-      <p class="label sentence-label">Use it in a sentence</p>
-      <div class="target-row">
-        <h1 class="target-slot"><span id="target-expression"></span></h1>
-        <span id="target-ipa" class="ipa" lang="en-GB-fonipa"></span>
-        <span id="target-meaning" class="target-meaning text-muted" lang="zh-Hans"></span>
+    <section id="sentence-recall-view" class="screen" hidden>
+      <p class="label label--accent">Recall the sentence</p>
+      <h1 id="sentence-recall-translation" class="sentence-recall-translation" lang="zh-Hans"></h1>
+      <div id="sentence-recall-field" class="field sentence-recall-field">
+        <label for="sentence-recall-input">Your sentence (optional, stays on this device)</label>
+        <textarea id="sentence-recall-input" class="input sentence-recall-input" rows="2" placeholder="Type it, or just say it" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
       </div>
-      <form id="sentence-form" class="sentence-form">
-        <label for="sentence-input" class="visually-hidden">Your sentence</label>
-        <div class="field-row">
-          <textarea id="sentence-input" class="input sentence-input" name="sentence" rows="3" placeholder="Your sentence"></textarea>
+      <div id="sentence-recall-check" class="sentence-recall-check" aria-live="polite" hidden>
+        <div id="sentence-recall-attempt-row" hidden>
+          <p class="label">You wrote</p>
+          <p id="sentence-recall-attempt" class="sentence-recall-attempt" lang="en"></p>
         </div>
-        <div id="recording-status" class="status-line" hidden>
-          <span class="status-dot status-dot--recording" aria-hidden="true"></span>
-          <span>Listening</span>
-          <span id="recording-time" class="text-muted tabular">0:00</span>
-        </div>
-        <div id="transcribing" class="status-line status-line--italic" hidden aria-live="polite"><span class="status-dot" aria-hidden="true"></span>Transcribing…</div>
-        <div id="spinner" class="status-line status-line--italic" hidden aria-live="polite"><span class="status-dot" aria-hidden="true"></span>Reviewing your sentence…</div>
-        <div class="action-row">
-          <button type="submit" class="btn btn-primary btn-lg" disabled>Review</button>
-          <button id="mic-button" type="button" class="btn btn-secondary btn-lg" hidden><i class="ph-duotone ph-microphone" aria-hidden="true"></i><span class="mic-label">Speak instead</span></button>
-          <button id="skip-button" type="button" class="btn btn-ghost">Skip</button>
-          <span class="key-hint key-hint--end"><kbd class="tag tag-neutral"><span id="mod-key">Ctrl</span> Enter</kbd> to review</span>
-        </div>
-      </form>
+        <p class="label">Example</p>
+        <p id="sentence-recall-sentence" class="example-sentence" lang="en"></p>
+      </div>
+      <div id="sentence-recall-actions" class="action-row action-row--spaced">
+        <button id="show-sentence-button" type="button" class="btn btn-primary btn-lg">Show sentence</button>
+        <button id="skip-sentence-button" type="button" class="btn btn-ghost">Skip</button>
+        <button id="got-it-button" type="button" class="btn btn-primary btn-lg" hidden>Got it</button>
+        <button id="not-yet-button" type="button" class="btn btn-secondary btn-lg" hidden>Not yet</button>
+      </div>
     </section>
 
-    <section id="feedback-view" class="screen feedback" hidden>
-      <div id="feedback-result" aria-live="polite"></div>
-    </section>
+    <div id="word-feedback" class="word-feedback" aria-live="polite" hidden></div>
+    <div id="example-block" class="example-block" aria-live="polite" hidden>
+      <p class="label">Example</p>
+      <p id="example-sentence" class="example-sentence" lang="en"></p>
+      <p id="example-translation" class="example-translation text-muted" lang="zh-Hans"></p>
+      <p id="example-note" class="example-note text-muted" hidden></p>
+      <button id="new-example-button" type="button" class="btn btn-ghost" hidden>New example</button>
+    </div>
+    <div id="remove-toast" class="remove-toast" role="status" hidden><span id="remove-toast-text"></span> <button id="undo-remove-button" type="button" class="btn btn-ghost">Undo</button></div>
 
     <section id="complete-view" class="screen" hidden>
       <div class="score-row">
@@ -160,7 +158,6 @@
 
     <div id="step-actions" class="action-row action-row--spaced" hidden>
       <button id="continue-button" type="button" class="btn btn-primary btn-lg" hidden>Continue</button>
-      <button id="retry-sentence-button" type="button" class="btn btn-secondary btn-lg" hidden>Try another sentence</button>
       <span class="key-hint"><kbd class="tag tag-neutral">Enter</kbd> to continue</span>
     </div>
   </main>

@@ -20,6 +20,8 @@ def append_attempt(progress_file: Path, attempt: PracticeAttempt) -> None:
     if attempt.sentence is not None:
         block["sentence"] = attempt.sentence
         block["feedback"] = attempt.feedback
+    if attempt.sentence_recall is not None:
+        block["sentence_recall"] = attempt.sentence_recall
 
     yaml_text = yaml.safe_dump(block, allow_unicode=True, sort_keys=False, default_flow_style=False)
 

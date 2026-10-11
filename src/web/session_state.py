@@ -1,26 +1,38 @@
 """The shared, in-memory practice-session state machine (spec 003,
-data-model.md). A thin orchestration layer over the existing, unchanged
-services — vocabulary_loader, matcher, llm_client.request_correction,
-progress_log — introducing no new grading/review/persistence logic."""
+data-model.md). A thin orchestration layer over vocabulary_loader,
+matcher and progress_log.
+
+Spec 021 replaced sentence writing and review with example sentences:
+in the "example" modes every answer goes to "reveal", which carries the
+word's example (made in the background by an ExampleService as soon as
+the word comes up), and the attempt is recorded once the learner moves on.
+"""
 
 import random
-from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 
 from src.models.practice_attempt import PracticeAttempt
-from src.services.llm_client import CorrectionResult, request_correction
 from src.services.matcher import grade_answer
 from src.services.progress_log import append_attempt
 from src.services.vocabulary_loader import load_vocabulary
 
-Step = str  # "empty" | "choose" | "recall" | "sentence" | "feedback" | "reveal" | "complete"
+Step = str  # "empty" | "choose" | "recall" | "reveal" | "sentence-recall" | "complete"
 
 UNGROUPED_KEY = "__ungrouped__"
+MODES = ("recall-only", "example", "example-recall")
+DEFAULT_MODE = "example"
+SENTENCE_RECALL_MARKS = ("reveal", "got", "not_yet", "skip")
 
 
 class WrongStepError(Exception):
     """Raised when an action is requested for the wrong step (no state change)."""
+
+
+def normalize_mode(mode: str | None) -> str:
+    """The practice mode to use: "sentence" (spec 012's old default) and
+    anything unknown mean the default "example" mode (spec 021)."""
+    return mode if mode in MODES else DEFAULT_MODE
 
 
 class PracticeSession:
@@ -31,37 +43,31 @@ class PracticeSession:
         group: str | None = None,
         offer_choice: bool = False,
         order: str = "sequential",
-        mode: str = "sentence",
+        mode: str = DEFAULT_MODE,
         item_filter=None,
+        example_service=None,
     ):
         """*offer_choice* opts into the interactive collection-choice step
-        (spec 007); it defaults to False so every existing caller that
-        doesn't know about this feature keeps today's exact behavior
-        (group=None -> immediate, unfiltered "recall"). Only
-        src/web/__main__.py sets it, and only when no --group was given —
-        an explicit *group* always wins over *offer_choice* (data-model.md).
+        (spec 007); without it the session starts straight away on every
+        word (or only *group*'s), in *order* ("sequential" or "random",
+        spec 011) and *mode* (spec 021: "recall-only", "example" [default]
+        or "example-recall"). In the interactive branch select_collection()
+        decides order and mode instead.
 
-        *order* ("sequential" [default] or "random", spec 011) is only
-        consumed here in the locked branch below — when *offer_choice* wins
-        instead, select_collection()'s own *order* argument governs it.
-
-        *mode* ("sentence" [default] or "recall-only", spec 012) resolves
-        into self.recall_only, which (unlike order) is stored and consulted
-        again on every submit_answer() call for the rest of the session. In
-        the interactive branch it's just a placeholder (False) — governed
-        instead by select_collection()'s own *mode* argument.
+        *item_filter* (spec 020) drops words this learner removed from the
+        shared sets; *example_service* (spec 021) makes and keeps example
+        sentences — None means no examples are offered.
         """
         self.progress_file = progress_file
         self.vocab_dir = vocab_dir
         self.warnings: list[str] = []
         self.current_index = 0
         self.pending_attempt: dict | None = None
-        self.last_correction: CorrectionResult | None = None
-        self._review_in_progress = False
         self.correct_count = 0
-        # Spec 020: drops words this learner removed from the shared sets.
         self.item_filter = item_filter
+        self.example_service = example_service
         self.pending_undo: dict | None = None
+        self.sentence_revealed = False
 
         items, warnings = self._load(vocab_dir)
         self.warnings = warnings
@@ -72,7 +78,7 @@ class PracticeSession:
 
         if interactive:
             self.items = []
-            self.recall_only = False
+            self.mode = DEFAULT_MODE
             self.step: Step = "choose" if self.all_items else "empty"
         else:
             if group is not None:
@@ -80,14 +86,24 @@ class PracticeSession:
             if order == "random":
                 random.shuffle(items)
             self.items = items
-            self.recall_only = mode == "recall-only"
+            self.mode = normalize_mode(mode)
             self.step = "recall" if self.items else "empty"
+            self._word_started()
+
+    @property
+    def recall_only(self) -> bool:
+        return self.mode == "recall-only"
 
     def _load(self, vocab_dir: Path) -> tuple[list, list[str]]:
         items, warnings = load_vocabulary(vocab_dir)
         if self.item_filter is not None:
             items = self.item_filter(items)
         return items, warnings
+
+    def _word_started(self) -> None:
+        """A new word is up: start making its example in the background."""
+        if self.step == "recall" and not self.recall_only and self.example_service is not None:
+            self.example_service.prepare(self.current_item)
 
     @property
     def current_item(self):
@@ -125,87 +141,25 @@ class PracticeSession:
 
         item = self.current_item
         correct = grade_answer(item, answer)
-        attempt = {
+        # Every answer is shown on "reveal" (with the example, in the
+        # example modes) and recorded when the learner moves on.
+        self.pending_attempt = {
             "timestamp": datetime.now(UTC).isoformat(timespec="seconds"),
             "item": item.english,
             "answer": answer,
             "correct": correct,
         }
-
-        self.pending_attempt = attempt
-        if correct and not self.recall_only:
-            self.step = "sentence"
-        else:
-            # Broadsheet redesign: only a correct recall in sentence mode
-            # earns the sentence step. Every other outcome (any recall-only
-            # answer, or a wrong answer in sentence mode) holds in "reveal"
-            # until an explicit continue, which records the attempt (spec
-            # 013's hold, now used for every result the learner must see).
-            self.step = "reveal"
-
+        self.step = "reveal"
         return {"correct": correct, "accepted_expressions": item.accepted_expressions()}
 
-    def submit_sentence(
-        self,
-        sentence: str,
-        base_url: str,
-        model: str,
-        correction_fn: Callable[..., CorrectionResult] | None = None,
-    ) -> dict:
-        self.pending_undo = None
-        if self.step != "sentence":
-            raise WrongStepError("not awaiting a sentence")
-        if self._review_in_progress:
-            raise WrongStepError("a sentence review is already in progress")
-
-        # Resolved from the module global at call time (not bound as a
-        # default argument) so tests can patch `request_correction` here.
-        if correction_fn is None:
-            correction_fn = request_correction
-
-        self._review_in_progress = True
-        try:
-            item = self.current_item
-            result = correction_fn(item.english, sentence, base_url=base_url, model=model)
-        finally:
-            self._review_in_progress = False
-
-        self.last_correction = result
-
-        if not result.available:
-            feedback = "correction unavailable"
-        elif result.uses_expression is False:
-            feedback = "missing target expression"
-        elif result.needs_correction:
-            feedback = f"corrected: {result.corrected}"
-        else:
-            feedback = "already correct"
-
-        self.pending_attempt["sentence"] = sentence
-        self.pending_attempt["feedback"] = feedback
-
-        attempt = PracticeAttempt(**self.pending_attempt)
-        append_attempt(self.progress_file, attempt)
-
-        self.step = "feedback"
-        return {
-            "available": result.available,
-            "uses_expression": result.uses_expression,
-            "needs_correction": result.needs_correction,
-            "corrected": result.corrected,
-            "explanation": result.explanation,
-        }
-
     def select_collection(
-        self, key: str | None, order: str = "sequential", mode: str = "sentence"
+        self, key: str | None, order: str = "sequential", mode: str = DEFAULT_MODE
     ) -> None:
         """Scope the session to one collection (spec 007): key is None for
         "practice everything", UNGROUPED_KEY for untagged items, or a real
         group value. Valid only from "choose"; resets progress counters
         for the new pass, preserving self.all_items's order unless *order*
-        is "random" (spec 011), in which case it's shuffled once here.
-        *mode* ("sentence" [default] or "recall-only", spec 012) resolves
-        self.recall_only for the whole session that follows."""
+        is "random" (spec 011). *mode* is normalised by normalize_mode()."""
         self.pending_undo = None
         if self.step != "choose":
             raise WrongStepError("not choosing a collection")
@@ -220,37 +174,65 @@ class PracticeSession:
         if order == "random":
             random.shuffle(self.items)
 
-        self.recall_only = mode == "recall-only"
+        self.mode = normalize_mode(mode)
         self.current_index = 0
         self.pending_attempt = None
-        self.last_correction = None
         self.correct_count = 0
         self.step = "recall" if self.items else "empty"
+        self._word_started()
 
-    def skip_sentence(self) -> None:
-        """Skip the sentence-writing step for the current item without a
-        correction request, recording the recall outcome as-is (spec 006).
-        Goes straight from "sentence" to "recall"/"complete", never
-        visiting "feedback" — see data-model.md's state-machine table."""
-        self.pending_undo = None
-        if self.step != "sentence":
-            raise WrongStepError("not awaiting a sentence")
-
+    def _record_and_advance(self) -> None:
+        """Record the word's held attempt, tally it, and go on to the next
+        word or "complete"."""
         append_attempt(self.progress_file, PracticeAttempt(**self.pending_attempt))
-        self._advance_after_attempt(self.pending_attempt["correct"])
-
-    def _advance_after_attempt(self, correct: bool) -> None:
-        """Shared tail for finalizing a completed item (spec 006's
-        skip_sentence, continue_to_next, and spec 012's recall-only
-        submit_answer): tally if correct, clear the pending attempt/
-        correction, advance to the next item or "complete"."""
-        if correct:
+        if self.pending_attempt["correct"]:
             self.correct_count += 1
-
         self.pending_attempt = None
-        self.last_correction = None
+        self.sentence_revealed = False
         self.current_index += 1
         self.step = "complete" if self.current_index >= len(self.items) else "recall"
+        self._word_started()
+
+    def continue_to_next(self) -> None:
+        """Move on from "reveal". In the example-recall mode, a word with
+        a ready example goes to "sentence-recall" first (spec 021 US2)."""
+        self.pending_undo = None
+        if self.step == "complete":
+            return
+        if self.step != "reveal":
+            raise WrongStepError("not ready to continue")
+        if (
+            self.mode == "example-recall"
+            and self.example_service is not None
+            and self.example_service.get(self.current_item)
+        ):
+            self.step = "sentence-recall"
+            self.sentence_revealed = False
+            return
+        self._record_and_advance()
+
+    def sentence_recall_action(self, mark: str) -> None:
+        """The learner's self-check of the example sentence (spec 021 US2):
+        "reveal" shows the sentence; "got" / "not_yet" record the attempt
+        with that mark and move on; "skip" records it without a mark."""
+        if mark not in SENTENCE_RECALL_MARKS:
+            raise ValueError(f"unknown mark {mark!r}")
+        self.pending_undo = None
+        if self.step != "sentence-recall":
+            raise WrongStepError("not recalling a sentence")
+        if mark == "reveal":
+            self.sentence_revealed = True
+            return
+        if mark != "skip":
+            self.pending_attempt["sentence_recall"] = mark
+        self._record_and_advance()
+
+    def renew_example(self) -> dict:
+        """Replace the current word's example with a new one (spec 021).
+        Raises ExampleUnavailable when none can be made right now."""
+        if self.step not in ("reveal", "sentence-recall") or self.example_service is None:
+            raise WrongStepError("no example to renew")
+        return self.example_service.renew(self.current_item)
 
     def restart(self) -> None:
         """Return to the collection-choice screen (spec 007), reloading
@@ -286,62 +268,33 @@ class PracticeSession:
         is discarded unrecorded; words already finished stay recorded.
         Only offered when a collection wasn't locked in at startup."""
         self.pending_undo = None
-        if self.group_locked or self.step not in ("recall", "sentence", "feedback", "reveal"):
+        if self.group_locked or self.step not in ("recall", "reveal", "sentence-recall"):
             raise WrongStepError("no session to end")
 
         self.pending_attempt = None
-        self.last_correction = None
+        self.sentence_revealed = False
         items, warnings = self._load(self.vocab_dir)
         self.warnings = warnings
         self.all_items = items
         self.step = "choose" if self.all_items else "empty"
-
-    def retry_sentence(self) -> None:
-        """Go back from "feedback" to "sentence" for the same word
-        (Broadsheet redesign's "Try another sentence"). The reviewed
-        sentence stays in the progress log; the next one is logged too."""
-        self.pending_undo = None
-        if self.step != "feedback":
-            raise WrongStepError("no sentence feedback to retry")
-
-        self.pending_attempt.pop("sentence", None)
-        self.pending_attempt.pop("feedback", None)
-        self.last_correction = None
-        self.step = "sentence"
-
-    def continue_to_next(self) -> None:
-        self.pending_undo = None
-        if self.step == "complete":
-            return
-        if self.step == "reveal":
-            # Recall-only, incorrect (spec 013): the attempt was held,
-            # unrecorded, at submit_answer() time — record it now, the
-            # moment the learner is done reviewing it.
-            append_attempt(self.progress_file, PracticeAttempt(**self.pending_attempt))
-            self._advance_after_attempt(self.pending_attempt["correct"])
-            return
-        if self.step != "feedback":
-            raise WrongStepError("not ready to continue")
-
-        self._advance_after_attempt(self.pending_attempt["correct"])
 
     def remove_current(self, remove_fn) -> dict:
         """Take the current word out of practice for good (spec 020).
         *remove_fn(item)* deletes it from its file (or hides it) and
         returns what undo needs; it runs first, so a failure leaves the
         session as it was. An attempt already made is logged as on
-        continue/skip; at recall nothing was answered, so nothing is."""
-        if self.step not in ("recall", "reveal", "sentence"):
+        continue; at recall nothing was answered, so nothing is."""
+        if self.step not in ("recall", "reveal", "sentence-recall"):
             raise WrongStepError("no word to remove")
         item = self.current_item
         token = remove_fn(item)
 
-        if self.step in ("reveal", "sentence"):
+        if self.step != "recall":
             append_attempt(self.progress_file, PracticeAttempt(**self.pending_attempt))
             if self.pending_attempt["correct"]:
                 self.correct_count += 1
         self.pending_attempt = None
-        self.last_correction = None
+        self.sentence_revealed = False
 
         index = self.current_index
         del self.items[index]
@@ -351,6 +304,7 @@ class PracticeSession:
             del self.all_items[all_index]
         self.step = "complete" if self.current_index >= len(self.items) else "recall"
         self.pending_undo = {"item": item, "index": index, "all_index": all_index, "token": token}
+        self._word_started()
         return {"english": item.english, "chinese": item.chinese}
 
     def undo_remove(self, restore_fn) -> None:
@@ -368,6 +322,18 @@ class PracticeSession:
         self.current_index = undo["index"]
         self.step = "recall"
         self.pending_undo = None
+
+    def _example_fields(self, item) -> dict:
+        if self.recall_only:
+            return {"example": None, "example_status": "off"}
+        if self.example_service is None:
+            return {"example": None, "example_status": "unavailable"}
+        example = self.example_service.get(item)
+        status = "ready" if example else self.example_service.status(item)
+        if self.step == "sentence-recall" and example and not self.sentence_revealed:
+            # The sentence is what's being recalled: withheld until revealed.
+            example = {"sentence": None, "translation": example["translation"]}
+        return {"example": example, "example_status": status}
 
     def state(self) -> dict:
         base = {"step": self.step, "warnings": self.warnings}
@@ -389,22 +355,16 @@ class PracticeSession:
         base["position"] = self.current_index + 1
         base["total"] = len(self.items)
         base["can_end_session"] = not self.group_locked
+        base["mode"] = self.mode
 
-        if self.step in ("sentence", "feedback", "reveal"):
+        if self.step in ("reveal", "sentence-recall"):
             base["accepted_expressions"] = item.accepted_expressions()
             # Revealed with the answer, never during recall (spec 017).
             base["ipa"] = item.ipa
             base["answer"] = self.pending_attempt["answer"]
             base["correct"] = self.pending_attempt["correct"]
-
-        if self.step == "feedback":
-            base["sentence"] = self.pending_attempt["sentence"]
-            base["feedback"] = {
-                "available": self.last_correction.available,
-                "uses_expression": self.last_correction.uses_expression,
-                "needs_correction": self.last_correction.needs_correction,
-                "corrected": self.last_correction.corrected,
-                "explanation": self.last_correction.explanation,
-            }
+            base.update(self._example_fields(item))
+        if self.step == "sentence-recall":
+            base["sentence_revealed"] = self.sentence_revealed
 
         return base

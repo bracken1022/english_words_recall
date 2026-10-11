@@ -2,14 +2,16 @@
 
 A local CLI and web tool that drills English vocabulary for
 Chinese speakers: it shows a Chinese meaning, has you recall the English
-expression, has you write an original sentence with it (typed, or — in the
-web UI — spoken and transcribed locally), and sends that sentence to a
-locally running [Ollama](https://ollama.com) model (default `qwen3:14b`) for
-grammar/naturalness correction via Ollama's HTTP API — the app never spawns
-the `ollama` CLI. All vocabulary content and practice history are plain
-Markdown files on disk — there is no database. Ollama only ever evaluates
-language quality; it never controls grading or lesson progression, which are
-fully deterministic regardless of what (or whether) Ollama returns. The
+expression, then shows the word in a short, natural example sentence with
+its Chinese translation — and, if you like, lets you try to recall that
+sentence too. Examples are written by a locally running
+[Ollama](https://ollama.com) model (default `qwen3:14b`) via Ollama's HTTP
+API — the app never spawns the `ollama` CLI — and are saved, so each word's
+example is written only once. All vocabulary content and practice history
+are plain Markdown files on disk — there is no database. Ollama only ever
+writes examples (and fills in imported word lists); it never controls
+grading or lesson progression, which are fully deterministic regardless of
+what (or whether) Ollama returns. The
 command line is a single-learner tool; the web UI supports several learners
 on one machine, each logging in to their own account with their own
 practice history (see [Accounts](#accounts-web-ui)).
@@ -32,7 +34,7 @@ practice history (see [Accounts](#accounts-web-ui)).
    ```
 
    Ollama must be reachable at `http://localhost:11434` (the default) for
-   sentence-correction feedback. The recall drill itself works without it.
+   example sentences. The recall drill itself works without it.
    A different model can be used instead via `--model` (see below).
 
 ## Vocabulary content
@@ -74,11 +76,12 @@ group: unit1
 .venv/bin/python -m src.cli --vocab-dir path/to/vocabulary --progress-file progress.md
 ```
 
-While a submitted sentence is being reviewed, the app shows a spinner
-("Reviewing your sentence...") so you know it's still working — it
-disappears the instant the review completes or fails, and never shows a
-fake percentage. If output isn't an interactive terminal (e.g., redirected
-to a file), it prints that same message once instead of animating.
+After each answer the tutor prints the word's example sentence and its
+translation (see [Example sentences](#example-sentences)). While a word's
+first example is being written, it shows a spinner ("Writing an
+example...") for at most 6 seconds, then `(No example right now.)` if none
+came. If output isn't an interactive terminal (e.g., redirected to a
+file), it prints that same message once instead of animating.
 
 Options:
 
@@ -88,9 +91,9 @@ Options:
 | `--progress-file` | `./progress.md` | Where practice attempts are appended |
 | `--group` | (all items) | Only practice items tagged with this lesson/group |
 | `--ollama-url` | `http://localhost:11434` | Base URL of the local Ollama server |
-| `--model` | `qwen3:14b` | Local Ollama model name to use for correction |
+| `--model` | `qwen3:14b` | Local Ollama model name to use for example sentences |
 | `--order` | `sequential` | Present words in file order (`sequential`) or shuffled (`random`) |
-| `--mode` | `sentence` | `sentence` (write a sentence for each word, as above) or `recall-only` (skip sentence-writing entirely — see below) |
+| `--mode` | `example` | `example` (show an example sentence after each answer), `example-recall` (also try to recall that sentence) or `recall-only` (no examples — see below). `sentence`, the old name, means `example`. |
 
 Your practice history is appended to the progress file as plain,
 human-readable Markdown — see
@@ -98,13 +101,13 @@ human-readable Markdown — see
 
 ### Recall-only mode
 
-Passing `--mode recall-only` drops the sentence-writing step entirely —
+Passing `--mode recall-only` drops example sentences entirely —
 each word is just: see the Chinese meaning, type the English expression,
 see whether you were right, move on. It never calls Ollama, so it works
 even if the local model isn't running.
 
-A **correct** answer moves on immediately, exactly like sentence mode
-does after finishing a sentence. A **wrong** answer instead prints the
+A **correct** answer moves on immediately. (In the example modes every
+answer waits for Enter, so you can read the example.) A **wrong** answer instead prints the
 correct expression and waits — "Press Enter to continue..." — so you can
 actually study the word you missed before it's replaced, rather than
 losing it to a fixed timer.
@@ -114,7 +117,7 @@ losing it to a fixed timer.
 A browser-based version of the same tutor is also available, so you can
 practice from a phone, tablet, or another computer on the same local
 network — it reads/writes the exact same vocabulary and progress files, and
-reuses the exact same Ollama review pipeline, as the command line tool
+shows the exact same saved example sentences, as the command line tool
 above. Each learner logs in to their own account first (see
 [Accounts](#accounts-web-ui) below — the web UI won't start without an
 `accounts.yml`), and it is not exposed to the public Internet by default.
@@ -140,7 +143,8 @@ If you don't pass `--group`, opening the web UI first shows a screen
 listing the collections found in your vocabulary folder (grouped by each
 item's `group` tag, plus "Practice everything" and, if any items have no
 tag, "Ungrouped words"), alongside toggles for **Order** (Sequential /
-Random) and **Mode** (Sentence / Recall only) — pick your settings and a
+Random) and **Mode** (Recall only / Recall + example / + sentence recall)
+— pick your settings and a
 collection to start. Finishing a session shows your score and offers a
 "Back to word sets" button that returns to that same screen (re-reading the vocabulary folder, so files you've added or changed
 in the meantime show up, and letting you pick fresh settings for the next
@@ -148,17 +152,13 @@ pass), all without restarting the server. Passing `--group` skips this
 screen entirely and behaves as before: it goes straight into practicing
 just that group, with no way to switch collections without restarting.
 
-After you check a word, the web UI shows the result and waits for you
-(Enter or the button) before moving on, so you can study it for as long as
-you want. A wrong answer, or "Show answer", shows every accepted expression
-and goes on to the next word; only a correct answer in **Sentence** mode
-leads to the sentence step. There you can type or speak a sentence, review
-it (Cmd/Ctrl+Enter), skip it, or after the review choose "Try another
-sentence" to write a new one for the same word (each reviewed sentence is
-logged). Submitting an empty sentence asks you to confirm skipping the
-word. "End session" in the header returns to the word sets mid-session;
-the word in progress is not logged. In **recall-only** mode (see above)
-there's no sentence step at all.
+After you check a word, the web UI shows the result — and, in the example
+modes, the word's example sentence — and waits for you (Enter or the
+button) before moving on, so you can study it for as long as you want. A
+wrong answer, or "Show answer", shows every accepted expression. "End
+session" in the header returns to the word sets mid-session; the word in
+progress is not logged. In **recall-only** mode (see above) there are no
+examples at all.
 
 ### Accounts (web UI)
 
@@ -223,7 +223,8 @@ nothing else changed (restoring the backup if it did), and writes a
 
 Each word can carry its part of speech, shown as short labels before the
 Chinese meaning: while you recall the word (*adj.* 热心的), on the
-answer, and on the sentence step. Hover a label to see its full name.
+answer, and in the example's prompt to the model. Hover a label to see
+its full name.
 The command-line tutor prints `Chinese meaning: adj. 热心的`. Grading
 never looks at the labels.
 
@@ -292,7 +293,7 @@ them separately from everyone else.
 
 To stop practicing a word, press **Remove this word**. It is next to
 "Show answer" while you recall the word, and among the buttons after the
-answer or on the sentence step. After you confirm:
+answer or while recalling the example sentence. After you confirm:
 
 - **From your own list**: the word is deleted from that list file, and
   nothing else in the file changes.
@@ -315,7 +316,7 @@ tutor fills in each word, and everything stays on your machine:
   use American IPA; the British IPA already on existing words is left
   unchanged;
 - a **short Chinese meaning**, written by the same local Ollama model
-  used for sentence review (never a cloud service), with several
+  used for example sentences (never a cloud service), with several
   meanings separated by `；`;
 - **parts of speech** (`adj.`, `n. v.`, `phr. v.`), also from the model,
   checked against the fixed list; a label outside it shows "Part of
@@ -364,33 +365,51 @@ The web UI and the command-line tool can be run at the same time and are
 just two ways to reach the same tutor — running one doesn't require
 stopping the other (though see the caution above about keeping
 `--progress-file` outside `--vocab-dir` for either). The collection screen,
-skip confirmation, and voice input below are conveniences specific to the
-web UI; the command-line tool intentionally keeps its original, simpler
+uploads and "New example" are conveniences specific to the web UI; the
+command-line tool intentionally keeps its original, simpler
 one-word-at-a-time flow.
 
-### Voice input (optional)
+### Example sentences
 
-Instead of typing a sentence, you can speak it. This is entirely
-local — no cloud speech service is ever used, and no audio is kept once
-it's transcribed:
+After each answer (in the **example** modes) the tutor shows the word in
+one short, natural, everyday sentence — at most 20 words, in the meaning
+you are practicing — with its Chinese translation underneath:
+
+> She is a **zealous** supporter of the local team.
+> 她是当地球队的狂热支持者。
+
+- **Made once, then kept.** A word's example is written by the local model
+  the first time the word comes up (in the background, while you recall
+  it), checked, and saved. Every later practice shows the same example
+  straight away, with no model call.
+- **Checked before it's shown.** An example must be a single sentence of
+  3–20 words that really uses the word (or a form of it: *gave up* for
+  *give up*), with a Chinese translation, and must pass a family-safe word
+  filter. An example that fails is retried once; if there's still none,
+  you see "No example right now." and practice carries on.
+- **New example** (web UI) writes a different example and keeps it in
+  place of the old one.
+- **Where examples are saved**: for a word in your own uploaded list, in
+  that word's entry (`example:` and `example_zh:` lines); for the shared
+  word sets, in a hidden `.examples.json` next to the word's file, so the
+  shared files themselves are never edited.
+
+**Sentence recall** (`example-recall` mode, "+ sentence recall" in the
+web UI): after the example, you see only its Chinese translation and try
+to say or type the English sentence. Press **Show sentence** to compare,
+then mark **Got it** or **Not yet** — that mark is saved in your practice
+history (`sentence_recall: got`); what you typed stays in your browser.
+**Skip** moves on without a mark. A word with no example skips this step.
+
+To check example quality with your model, run the evaluation on the
+reviewed 50-word set (needs Ollama running):
 
 ```bash
-.venv/bin/pip install -e ".[voice]"
+.venv/bin/python -m src.tools.eval_examples --sample 50
 ```
 
-The first time you use it, a small local speech-to-text model
-(`faster-whisper`) is downloaded and cached — a one-time setup step, the
-same idea as pulling an Ollama model. Once installed, a "Speak instead"
-button appears next to the sentence field; tap it to start recording, tap
-it again to stop. The recognized text lands in that same field for you to
-review and edit — nothing is ever submitted straight from speech. If the
-dependency isn't installed (or fails to load), the button simply doesn't
-appear and typing works exactly as it always has.
-
-> **Note**: browsers only allow microphone access on `localhost` or over
-> HTTPS. If you're reaching the web UI from another device on your LAN
-> (see above), voice input generally won't be available there — typing is
-> unaffected either way.
+It prints the automatic pass rate, why examples were rejected and how long
+they took, and writes a `REVIEW.md` (under `backups/`) for you to tick.
 
 ## Development
 

@@ -82,14 +82,12 @@ def test_missing_or_empty_fields_get_400(tmp_path: Path, body):
 GUARDED = [
     ("get", "/api/state"),
     ("post", "/api/answer"),
-    ("post", "/api/sentence"),
     ("post", "/api/select"),
-    ("post", "/api/skip"),
     ("post", "/api/restart"),
     ("post", "/api/end"),
-    ("post", "/api/retry-sentence"),
     ("post", "/api/continue"),
-    ("post", "/api/transcribe"),
+    ("post", "/api/example/new"),
+    ("post", "/api/sentence-recall"),
     ("post", "/api/logout"),
 ]
 

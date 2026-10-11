@@ -2,11 +2,9 @@
 test client stands for one browser/device."""
 
 from pathlib import Path
-from unittest.mock import patch
 
 from src.models.account import Account
 from src.models.practice_attempt import PracticeAttempt
-from src.services.llm_client import CorrectionResult
 from src.services.progress_log import append_attempt, read_attempts
 from src.web.app import create_app
 
@@ -98,7 +96,7 @@ def _two_learners(tmp_path: Path):
     a, b = app.test_client(), app.test_client()
     _login(a, "weibo")
     _login(b, "lily")
-    a.post("/api/select", json={"collection": "unit1", "order": "sequential", "mode": "sentence"})
+    a.post("/api/select", json={"collection": "unit1", "order": "sequential", "mode": "example"})
     b.post("/api/select", json={"collection": "unit2", "mode": "recall-only"})
     return a, b
 
@@ -112,7 +110,7 @@ def test_interleaved_sessions_stay_independent(tmp_path: Path):
     assert (_state(a)["total"], _state(b)["total"]) == (2, 1)
 
     a.post("/api/answer", json={"answer": "receive"})
-    assert _state(a)["step"] == "sentence"
+    assert _state(a)["step"] == "reveal"
     assert _state(b)["step"] == "recall"
     assert _state(b)["chinese"] == "接受"
 
@@ -123,29 +121,21 @@ def test_interleaved_sessions_stay_independent(tmp_path: Path):
     assert b_state["correct"] == 1
 
     a_state = _state(a)
-    assert a_state["step"] == "sentence"
+    assert a_state["step"] == "reveal"
     assert a_state["position"] == 1
     assert a_state["total"] == 2
 
 
-@patch("src.web.session_state.request_correction")
-def test_sentence_review_belongs_only_to_its_account(mock_request, tmp_path: Path):
-    mock_request.return_value = CorrectionResult(
-        available=True,
-        uses_expression=True,
-        needs_correction=False,
-        corrected=None,
-        explanation="",
-    )
+def test_example_belongs_only_to_its_account(tmp_path: Path):
+    # Spec 021 replaced the per-account sentence review with examples.
     a, b = _two_learners(tmp_path)
     a.post("/api/answer", json={"answer": "receive"})
-    a.post("/api/sentence", json={"sentence": "I received it."})
 
     a_state, b_state = _state(a), _state(b)
-    assert a_state["step"] == "feedback"
-    assert a_state["sentence"] == "I received it."
-    assert "feedback" not in b_state
-    assert "sentence" not in b_state
+    assert a_state["step"] == "reveal"
+    assert "example_status" in a_state
+    assert "example" not in b_state
+    assert "example_status" not in b_state
 
 
 def test_one_account_ending_its_session_leaves_the_other_alone(tmp_path: Path):
@@ -172,13 +162,13 @@ def test_same_account_on_two_devices_shares_one_session(tmp_path: Path):
 # --- US3: log out and switch accounts --------------------------------------
 
 
-def test_logout_mid_sentence_discards_word_and_starts_fresh(tmp_path: Path):
+def test_logout_mid_reveal_discards_word_and_starts_fresh(tmp_path: Path):
     app = _make_app(tmp_path)
     client = app.test_client()
     _login(client, "weibo")
-    client.post("/api/select", json={"collection": None, "mode": "sentence"})
+    client.post("/api/select", json={"collection": None, "mode": "example"})
     client.post("/api/answer", json={"answer": "receive"})
-    assert _state(client)["step"] == "sentence"
+    assert _state(client)["step"] == "reveal"
 
     client.post("/api/logout")
     progress = tmp_path / "progress.md"
@@ -203,7 +193,7 @@ def test_switching_accounts_on_one_device(tmp_path: Path):
     app = _make_app(tmp_path)
     client = app.test_client()
     _login(client, "weibo")
-    client.post("/api/select", json={"collection": None, "mode": "sentence"})
+    client.post("/api/select", json={"collection": None, "mode": "example"})
     client.post("/api/answer", json={"answer": "receive"})
     client.post("/api/logout")
 

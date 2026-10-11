@@ -15,6 +15,8 @@ class PracticeAttempt:
     correct: bool
     sentence: str | None = None
     feedback: str | None = None
+    # Spec 021: the learner's own mark after recalling the example sentence.
+    sentence_recall: str | None = None
 
     def __post_init__(self) -> None:
         if not self.timestamp:
@@ -25,6 +27,8 @@ class PracticeAttempt:
             raise PracticeAttemptError("PracticeAttempt requires 'answer' (may be empty string)")
         if not isinstance(self.correct, bool):
             raise PracticeAttemptError("PracticeAttempt requires 'correct' to be a boolean")
+        if self.sentence_recall not in (None, "got", "not_yet"):
+            raise PracticeAttemptError("PracticeAttempt 'sentence_recall' must be 'got' or 'not_yet'")
         if (self.sentence is None) != (self.feedback is None):
             raise PracticeAttemptError(
                 "PracticeAttempt requires 'sentence' and 'feedback' to be both present or both absent"
@@ -43,4 +47,5 @@ class PracticeAttempt:
             correct=bool(block["correct"]),
             sentence=block.get("sentence"),
             feedback=block.get("feedback"),
+            sentence_recall=block.get("sentence_recall"),
         )

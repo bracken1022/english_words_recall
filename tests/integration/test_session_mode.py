@@ -2,7 +2,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from src.cli.session import run_session
-from src.services.llm_client import CorrectionResult
+from tests.fake_examples import FakeExampleService
 
 
 def _write_two_item_vocab(tmp_path: Path) -> Path:
@@ -14,21 +14,20 @@ def _write_two_item_vocab(tmp_path: Path) -> Path:
     return vocab_dir
 
 
-@patch("src.cli.session.request_correction")
-def test_recall_only_mode_never_requests_correction(mock_request, tmp_path: Path, monkeypatch):
+def test_recall_only_mode_never_asks_for_examples(tmp_path: Path, monkeypatch):
+    service = FakeExampleService()
     vocab_dir = _write_two_item_vocab(tmp_path)
-    progress_file = tmp_path / "progress.md"
     answers = iter(["receive", "give up"])
     monkeypatch.setattr("builtins.input", lambda *_: next(answers))
 
-    run_session(vocab_dir=vocab_dir, progress_file=progress_file, mode="recall-only")
+    with patch("src.cli.session.ExampleService", lambda *a, **k: service):
+        run_session(vocab_dir=vocab_dir, progress_file=tmp_path / "p.md", mode="recall-only")
 
-    mock_request.assert_not_called()
+    assert service.asked == []
 
 
-@patch("src.cli.session.request_correction")
 def test_recall_only_mode_records_every_word_without_sentence_or_feedback(
-    mock_request, tmp_path: Path, monkeypatch
+    tmp_path: Path, monkeypatch
 ):
     vocab_dir = _write_two_item_vocab(tmp_path)
     progress_file = tmp_path / "progress.md"
@@ -44,30 +43,51 @@ def test_recall_only_mode_records_every_word_without_sentence_or_feedback(
     assert "feedback:" not in text
 
 
-@patch("src.cli.session.request_correction")
-def test_sentence_mode_default_still_requests_correction_per_word(
-    mock_request, tmp_path: Path, monkeypatch
-):
-    mock_request.return_value = CorrectionResult(
-        available=True, uses_expression=True, needs_correction=False, corrected=None, explanation=None
-    )
+def test_example_mode_default_shows_an_example_per_word(tmp_path: Path, monkeypatch, capsys):
+    service = FakeExampleService()
     vocab_dir = _write_two_item_vocab(tmp_path)
     progress_file = tmp_path / "progress.md"
-    answers = iter(["receive", "sentence one.", "give up", "sentence two."])
+    # answer, then Enter to continue, for each word
+    answers = iter(["receive", "", "give up", ""])
     monkeypatch.setattr("builtins.input", lambda *_: next(answers))
 
-    run_session(vocab_dir=vocab_dir, progress_file=progress_file)
+    with patch("src.cli.session.ExampleService", lambda *a, **k: service):
+        run_session(vocab_dir=vocab_dir, progress_file=progress_file)
 
-    assert mock_request.call_count == 2
+    assert service.asked == ["receive", "give up"]
+    out = capsys.readouterr().out
+    assert out.count("Example: I received a gift from my aunt.") == 2
     text = progress_file.read_text(encoding="utf-8")
-    assert "sentence: sentence one." in text
-    assert "sentence: sentence two." in text
+    assert "answer: receive" in text
+    assert "answer: give up" in text
 
 
-@patch("src.cli.session.request_correction")
-def test_recall_only_wrong_answer_waits_for_an_extra_confirmation(
-    mock_request, tmp_path: Path, monkeypatch
-):
+def test_sentence_mode_means_example_mode(tmp_path: Path, monkeypatch):
+    service = FakeExampleService()
+    vocab_dir = _write_two_item_vocab(tmp_path)
+    answers = iter(["receive", "", "give up", ""])
+    monkeypatch.setattr("builtins.input", lambda *_: next(answers))
+
+    with patch("src.cli.session.ExampleService", lambda *a, **k: service):
+        run_session(vocab_dir=vocab_dir, progress_file=tmp_path / "p.md", mode="sentence")
+
+    assert service.asked == ["receive", "give up"]
+
+
+def test_no_example_available_still_completes(tmp_path: Path, monkeypatch, capsys):
+    vocab_dir = _write_two_item_vocab(tmp_path)
+    progress_file = tmp_path / "progress.md"
+    answers = iter(["receive", "", "give up", ""])
+    monkeypatch.setattr("builtins.input", lambda *_: next(answers))
+
+    with patch("src.cli.session.ExampleService", lambda *a, **k: FakeExampleService(example=None)):
+        run_session(vocab_dir=vocab_dir, progress_file=progress_file)
+
+    assert "(No example right now.)" in capsys.readouterr().out
+    assert "item: give up" in progress_file.read_text(encoding="utf-8")
+
+
+def test_recall_only_wrong_answer_waits_for_an_extra_confirmation(tmp_path: Path, monkeypatch):
     """Spec 013: a wrong recall-only answer must block on one extra
     input() call (the "press Enter to continue" pause) before the
     session moves on to the next word."""
@@ -87,13 +107,9 @@ def test_recall_only_wrong_answer_waits_for_an_extra_confirmation(
     # Only if the confirmation pause actually consumed the blank input()
     # value did "give up" (not "") land as the second item's real answer.
     assert "answer: give up" in text
-    mock_request.assert_not_called()
 
 
-@patch("src.cli.session.request_correction")
-def test_recall_only_correct_answer_needs_no_extra_confirmation(
-    mock_request, tmp_path: Path, monkeypatch
-):
+def test_recall_only_correct_answer_needs_no_extra_confirmation(tmp_path: Path, monkeypatch):
     """Regression guard: a correct recall-only answer must NOT consume an
     extra input() value — only one scripted answer per word is needed."""
     vocab_dir = _write_two_item_vocab(tmp_path)

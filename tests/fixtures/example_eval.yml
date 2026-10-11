@@ -1,0 +1,58 @@
+# Reviewed word set for example-sentence quality (spec 021, research R8).
+# Used by `python -m src.tools.eval_examples`, which needs a running Ollama.
+# Each entry gives the meaning and part of speech the example must use.
+# Reviewed 2026-10-11.
+words:
+  # single words (35)
+  - {english: zealous, chinese: 热心的；热情的, pos: [adj.]}
+  - {english: receive, chinese: 收到；接受, pos: [v.]}
+  - {english: arduous, chinese: 艰苦的；费力的, pos: [adj.]}
+  - {english: diligent, chinese: 勤奋的, pos: [adj.]}
+  - {english: abundant, chinese: 丰富的；充足的, pos: [adj.]}
+  - {english: ambiguous, chinese: 模棱两可的；含糊的, pos: [adj.]}
+  - {english: curious, chinese: 好奇的, pos: [adj.]}
+  - {english: honest, chinese: 诚实的, pos: [adj.]}
+  - {english: schedule, chinese: 日程；时间表, pos: [n.]}
+  - {english: garage, chinese: 车库, pos: [n.]}
+  - {english: leisure, chinese: 空闲；闲暇, pos: [n.]}
+  - {english: neighbor, chinese: 邻居, pos: [n.]}
+  - {english: hurry, chinese: 赶紧；急忙, pos: [v.]}
+  - {english: vitamin, chinese: 维生素, pos: [n.]}
+  - {english: epitomize, chinese: 是…的典范；集中体现, pos: [v.]}
+  - {english: meticulous, chinese: 一丝不苟的；细致的, pos: [adj.]}
+  - {english: resilient, chinese: 有复原力的；坚韧的, pos: [adj.]}
+  - {english: inevitable, chinese: 不可避免的, pos: [adj.]}
+  - {english: eloquent, chinese: 雄辩的；有说服力的, pos: [adj.]}
+  - {english: reluctant, chinese: 不情愿的, pos: [adj.]}
+  - {english: substantial, chinese: 大量的；可观的, pos: [adj.]}
+  - {english: temporary, chinese: 暂时的；临时的, pos: [adj.]}
+  - {english: anxious, chinese: 焦虑的；担心的, pos: [adj.]}
+  - {english: genuine, chinese: 真正的；真诚的, pos: [adj.]}
+  - {english: pursue, chinese: 追求；从事, pos: [v.]}
+  - {english: tedious, chinese: 冗长乏味的, pos: [adj.]}
+  - {english: tempt, chinese: 引诱；诱惑, pos: [v.]}
+  - {english: thrive, chinese: 兴旺；茁壮成长, pos: [v.]}
+  - {english: undertake, chinese: 承担；着手, pos: [v.]}
+  - {english: vague, chinese: 模糊的；不明确的, pos: [adj.]}
+  - {english: withstand, chinese: 承受；经受住, pos: [v.]}
+  - {english: yield, chinese: 产生；出产, pos: [v.]}
+  - {english: rent, chinese: 租金, pos: [n.]}
+  - {english: undermine, chinese: 逐渐削弱；损害, pos: [v.]}
+  - {english: intrinsic, chinese: 本质的；内在的, pos: [adj.]}
+  # phrases (10)
+  - {english: give up, chinese: 放弃, pos: [phr. v.]}
+  - {english: tend to, chinese: 往往；倾向于, pos: [phr. v.]}
+  - {english: look forward to, chinese: 期待；盼望, pos: [phr. v.]}
+  - {english: take off, chinese: 起飞, pos: [phr. v.]}
+  - {english: make up for, chinese: 弥补, pos: [phr. v.]}
+  - {english: look up, chinese: 查找, pos: [phr. v.]}
+  - {english: set off, chinese: 出发, pos: [phr. v.]}
+  - {english: run out of, chinese: 用完；耗尽, pos: [phr. v.]}
+  - {english: get along with, chinese: 与…相处融洽, pos: [phr. v.]}
+  - {english: in charge of, chinese: 负责；主管, pos: [phr.]}
+  # one meaning of a word with two distinct meanings (5)
+  - {english: light, chinese: 轻的, pos: [adj.]}
+  - {english: figure, chinese: 数字, pos: [n.]}
+  - {english: record, chinese: 记录；录音, pos: [v.]}
+  - {english: tear, chinese: 撕；撕破, pos: [v.]}
+  - {english: present, chinese: 礼物, pos: [n.]}

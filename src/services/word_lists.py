@@ -498,25 +498,55 @@ class WordListStore:
         with self._lock(account):
             target = self._own_path(account, path)
             text = target.read_text(encoding="utf-8")
-            for match in _BLOCK_RE.finditer(text):
-                blocks, _ = parse_blocks(match.group(0))
-                if not blocks:
-                    continue
-                block = blocks[0]
-                if str(block.get("english", "")).strip() == english.strip() and str(
-                    block.get("chinese", "")
-                ).strip() == chinese.strip():
-                    start, end = match.start(), match.end()
-                    if text[end : end + 1] == "\n":
-                        end += 1  # the block's own line end
-                    if text[end : end + 1] == "\n":
-                        end += 1  # one separator line after it
-                    elif start > 0 and text[start - 1 : start] == "\n" and end >= len(text):
-                        start -= 1  # last block: take the separator before it
-                    after = text[:start] + text[end:]
-                    _write_text(target, after)
-                    return RemovedEntry(target, start, text[start:end], after)
+            match = self._find_block(text, english, chinese)
+            if match is not None:
+                start, end = match.start(), match.end()
+                if text[end : end + 1] == "\n":
+                    end += 1  # the block's own line end
+                if text[end : end + 1] == "\n":
+                    end += 1  # one separator line after it
+                elif start > 0 and text[start - 1 : start] == "\n" and end >= len(text):
+                    start -= 1  # last block: take the separator before it
+                after = text[:start] + text[end:]
+                _write_text(target, after)
+                return RemovedEntry(target, start, text[start:end], after)
             raise KeyError(english)
+
+    def set_example(
+        self, account: Account, path: Path, english: str, chinese: str, sentence: str, translation: str
+    ) -> None:
+        """Save an example in the word's own block (spec 021): the block's
+        `example:`/`example_zh:` lines are replaced, or added before its
+        closing `---`; every other byte stays the same."""
+        with self._lock(account):
+            target = self._own_path(account, path)
+            text = target.read_text(encoding="utf-8")
+            match = self._find_block(text, english, chinese)
+            if match is None:
+                raise KeyError(english)
+            start = match.start()
+            end = start + len(match.group(0).rstrip())  # up to the closing ---
+            lines = text[start:end].split("\n")
+            # Examples are always written on one line (width below).
+            kept = [line for line in lines[:-1] if not line.startswith(("example:", "example_zh:"))]
+            dumped = yaml.safe_dump(
+                {"example": sentence, "example_zh": translation},
+                allow_unicode=True, sort_keys=False, default_flow_style=False, width=10_000,
+            ).rstrip("\n")
+            new_body = "\n".join([*kept, dumped, lines[-1]])
+            _write_text(target, text[:start] + new_body + text[end:])
+
+    def _find_block(self, text: str, english: str, chinese: str):
+        for match in _BLOCK_RE.finditer(text):
+            blocks, _ = parse_blocks(match.group(0))
+            if not blocks:
+                continue
+            block = blocks[0]
+            if str(block.get("english", "")).strip() == english.strip() and str(
+                block.get("chinese", "")
+            ).strip() == chinese.strip():
+                return match
+        return None
 
     def restore_word(self, account: Account, removed: RemovedEntry) -> None:
         """Put a cut entry back: exactly where it was if the file is as the

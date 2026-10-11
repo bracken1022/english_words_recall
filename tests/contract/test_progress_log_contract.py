@@ -61,3 +61,16 @@ def test_read_missing_file_returns_empty(tmp_path: Path):
     attempts, warnings = read_attempts(tmp_path / "missing.md")
     assert attempts == []
     assert warnings == []
+
+
+# --- spec 021: sentence_recall ---------------------------------------------------
+
+
+def test_sentence_recall_round_trips(tmp_path: Path):
+    log = tmp_path / "progress.md"
+    append_attempt(log, PracticeAttempt("t1", "zealous", "zealous", True, sentence_recall="got"))
+    append_attempt(log, PracticeAttempt("t2", "rent", "rent", False))
+    attempts, warnings = read_attempts(log)
+    assert warnings == []
+    assert [a.sentence_recall for a in attempts] == ["got", None]
+    assert "sentence_recall" not in log.read_text(encoding="utf-8").split("t2")[1]

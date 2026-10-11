@@ -2,13 +2,11 @@
 contracts/ipa-display-contract.md)."""
 
 from pathlib import Path
-from unittest.mock import patch
 
-from src.cli import session as cli_session
-from src.cli.session import run_recall_step, run_sentence_step
+from src.cli.session import run_recall_step
 from src.models.vocabulary_item import VocabularyItem
-from src.services.llm_client import CorrectionResult
 from src.web.app import create_app
+from tests.fake_examples import FakeExampleService
 
 
 def _client(tmp_path: Path):
@@ -40,34 +38,13 @@ def test_cli_without_ipa_prints_no_pronunciation(capsys):
     assert "Pronunciation" not in capsys.readouterr().out
 
 
-@patch("src.cli.session.request_correction")
-def test_sentence_prompt_shows_ipa(mock_request, capsys):
-    mock_request.return_value = CorrectionResult(
-        available=False,
-        uses_expression=None,
-        needs_correction=None,
-        corrected=None,
-        explanation=None,
+def test_cli_pronunciation_comes_before_the_example(capsys):
+    # Spec 021 replaced the sentence prompt (which carried the IPA) with
+    # the example sentence, shown after the pronunciation.
+    run_recall_step(
+        VocabularyItem("receive", "收到", ipa="rɪˈsiːv"),
+        answer_input=lambda: "receive",
+        examples=FakeExampleService(),
     )
-    run_sentence_step("receive", sentence_input=lambda: "I got it.", ipa="rɪˈsiːv")
-    assert 'Write a sentence using "receive" /rɪˈsiːv/:' in capsys.readouterr().out
-    run_sentence_step("receive", sentence_input=lambda: "I got it.")
-    assert 'Write a sentence using "receive":' in capsys.readouterr().out
-
-
-def test_run_session_passes_ipa_to_sentence_step(tmp_path: Path, monkeypatch):
-    vocab_dir = tmp_path / "vocab"
-    vocab_dir.mkdir()
-    (vocab_dir / "unit1.md").write_text(
-        "---\nenglish: receive\nipa: rɪˈsiːv\nchinese: 收到\n---\n", encoding="utf-8"
-    )
-    captured = {}
-
-    def fake_sentence_step(target, **kwargs):
-        captured.update(kwargs)
-        return "I got it.", "already correct"
-
-    monkeypatch.setattr(cli_session, "run_sentence_step", fake_sentence_step)
-    monkeypatch.setattr("builtins.input", lambda *_: "receive")
-    cli_session.run_session(vocab_dir=vocab_dir, progress_file=tmp_path / "p.md")
-    assert captured["ipa"] == "rɪˈsiːv"
+    out = capsys.readouterr().out
+    assert out.index("Pronunciation: /rɪˈsiːv/") < out.index("Example: ")

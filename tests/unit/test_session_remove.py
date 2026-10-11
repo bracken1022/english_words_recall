@@ -3,11 +3,9 @@ removing the current word moves the session on, keeps any attempt already
 made, and can be undone only until the next action."""
 
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
-from src.services.llm_client import CorrectionResult
 from src.web.session_state import PracticeSession, WrongStepError
 
 VOCAB = (
@@ -63,11 +61,11 @@ def test_remove_at_reveal_logs_the_held_attempt(tmp_path):
     assert session.current_item.english == "rent"
 
 
-@patch("src.web.session_state.request_correction")
-def test_remove_at_sentence_logs_like_skip(mock_request, tmp_path):
+def test_remove_at_example_reveal_logs_the_attempt(tmp_path):
+    # Spec 021: the old "sentence" step is now the example mode's reveal.
     session = _session(tmp_path)
     session.submit_answer("zealous")
-    assert session.step == "sentence"
+    assert session.step == "reveal"
     session.remove_current(Recorder())
     assert "zealous" in _log(tmp_path)
     assert session.correct_count == 1
@@ -98,17 +96,6 @@ def test_wrong_steps_raise(tmp_path, setup):
     with pytest.raises(WrongStepError):
         session.remove_current(remove)
     assert remove.calls == []
-
-
-@patch("src.web.session_state.request_correction")
-def test_wrong_step_feedback(mock_request, tmp_path):
-    mock_request.return_value = CorrectionResult(True, True, False, None, None)
-    session = _session(tmp_path)
-    session.submit_answer("zealous")
-    session.submit_sentence("I am zealous.", base_url="x", model="m")
-    assert session.step == "feedback"
-    with pytest.raises(WrongStepError):
-        session.remove_current(Recorder())
 
 
 def test_failed_removal_leaves_session_unchanged(tmp_path):

@@ -16,7 +16,7 @@ def _setup(tmp_path: Path, **kwargs):
     vocab_dir = tmp_path / "vocab"
     vocab_dir.mkdir()
     (vocab_dir / "unit1.md").write_text(VOCAB, encoding="utf-8")
-    options = {"group": None, "offer_choice": True, "order": "sequential", "mode": "sentence"}
+    options = {"group": None, "offer_choice": True, "order": "sequential", "mode": "example"}
     options.update(kwargs)
     registry = SessionRegistry(vocab_dir=vocab_dir, **options)
     a = Account("weibo", "pw-a", "Weibo", tmp_path / "progress.md")
@@ -82,7 +82,7 @@ def _store_setup(tmp_path: Path):
         group=None,
         offer_choice=True,
         order="sequential",
-        mode="sentence",
+        mode="example",
         word_lists=store,
     )
     return registry, store, a, b
@@ -103,7 +103,7 @@ def test_session_uses_shared_folder_until_account_has_a_list(tmp_path: Path):
         group=None,
         offer_choice=True,
         order="sequential",
-        mode="sentence",
+        mode="example",
         word_lists=store,
     )
     assert fresh.get(b).vocab_dir == tmp_path / "word-lists" / "lily"

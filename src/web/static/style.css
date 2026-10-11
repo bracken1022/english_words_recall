@@ -460,43 +460,7 @@ p { margin: 0; }
   text-decoration: line-through;
 }
 
-/* — 3. sentence — */
-
-.sentence-label { margin-top: var(--space-6); }
-
-.target-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--space-2) var(--space-4);
-  margin-top: var(--space-2);
-}
-.target-slot {
-  font-size: 68px;
-  letter-spacing: -0.02em;
-}
-.target-meaning {
-  font-family: var(--font-zh);
-  font-size: 19px;
-}
-
-.sentence-form {
-  margin-top: var(--space-8);
-  max-width: 680px;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
-}
-.sentence-form .action-row { margin-top: var(--space-3); }
-
-.sentence-input {
-  min-height: 136px;
-  font-size: 24px;
-  line-height: 1.5;
-  padding: var(--space-3) var(--space-4);
-  resize: vertical;
-}
-.sentence-input.is-recording { border-color: var(--color-accent-2); }
+/* — status lines — */
 
 .status-line {
   display: flex;
@@ -513,57 +477,6 @@ p { margin: 0; }
   background: var(--color-accent);
   animation: pulse 1.1s ease-in-out infinite;
 }
-.status-dot--recording { background: var(--color-accent-2); }
-
-/* — 4. feedback — */
-
-.feedback { max-width: 700px; }
-
-.feedback-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--space-4) var(--space-6);
-}
-
-.feedback-block {
-  margin-top: var(--space-8);
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-}
-
-.original-sentence {
-  font-size: 24px;
-  line-height: 1.5;
-  color: var(--color-neutral-700);
-}
-.token-removed {
-  color: var(--color-accent-2-700);
-  text-decoration: line-through;
-}
-
-.corrected-sentence {
-  font-size: 32px;
-  font-weight: 600;
-  line-height: 1.35;
-  letter-spacing: -0.01em;
-}
-.token-added {
-  color: var(--color-accent-800);
-  background: var(--color-accent-200);
-  border-radius: var(--radius-md);
-}
-
-.notes { gap: var(--space-3); }
-.note {
-  display: grid;
-  grid-template-columns: 24px 1fr;
-  font-size: 18px;
-  line-height: 1.6;
-  text-wrap: pretty;
-}
-.note-dash { color: var(--color-accent-2); }
 
 /* — 5. session complete — */
 
@@ -655,13 +568,9 @@ p { margin: 0; }
   .answer-field { margin-top: var(--space-8); }
   .answer-input { font-size: 26px; flex-basis: 100%; }
 
-  .target-slot { font-size: 44px; }
-  .sentence-input { font-size: 20px; }
   .key-hint--end { margin-left: 0; }
 
   .answer-text { font-size: 32px; }
-  .corrected-sentence { font-size: 26px; }
-  .original-sentence { font-size: 20px; }
 
   .score { font-size: 110px; }
   .action-row--spaced { margin-top: var(--space-8); }
@@ -743,13 +652,7 @@ p { margin: 0; }
   font-size: 20px;
   margin-top: var(--space-1);
 }
-.target-row .ipa { font-size: 22px; }
-.feedback-head .ipa { font-size: 20px; }
 
-@media (max-width: 600px) {
-  .target-row .ipa,
-  .feedback-head .ipa { display: block; }
-}
 
 /* — enriched upload import (spec 018) — */
 
@@ -830,8 +733,6 @@ p { margin: 0; }
 }
 .pos + .pos { margin-left: 0.3em; }
 .meanings .pos-list { font-size: 0.55em; margin-right: 0; }
-.target-meaning .pos-list { font-size: inherit; }
-.feedback-head .pos-list { font-size: 18px; margin-left: var(--space-2); }
 .import-preview .pos-list { font-size: 13px; }
 
 /* — remove word (spec 020) — */
@@ -845,4 +746,46 @@ p { margin: 0; }
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-md);
   font-size: 15px;
+}
+
+/* — example sentences (spec 021) — */
+
+.example-block {
+  margin-top: var(--space-6);
+  max-width: 700px;
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--color-accent);
+}
+.example-sentence { margin: var(--space-1) 0 0; font-size: 24px; line-height: 1.45; }
+.example-translation { margin: var(--space-1) 0 0; font-family: var(--font-zh); font-size: 17px; }
+.example-note { margin: var(--space-1) 0 0; font-style: italic; }
+.example-block .btn { margin-top: var(--space-2); padding-inline: 0; }
+
+/* — sentence recall (spec 021) — */
+
+.sentence-recall-translation {
+  margin-top: var(--space-3);
+  max-width: 760px;
+  font-family: var(--font-zh);
+  font-size: 40px;
+  line-height: 1.35;
+  letter-spacing: 0;
+}
+.sentence-recall-field { margin-top: var(--space-6); max-width: 700px; }
+.sentence-recall-input {
+  display: block; resize: vertical; min-height: 64px;
+  font-size: 22px; line-height: 1.45; padding: var(--space-2) var(--space-3);
+}
+.sentence-recall-check {
+  margin-top: var(--space-6);
+  max-width: 700px;
+  padding-left: var(--space-3);
+  border-left: 3px solid var(--color-accent);
+}
+.sentence-recall-attempt { margin: var(--space-1) 0 var(--space-3); font-size: 20px; line-height: 1.45; }
+
+@media (max-width: 600px) {
+  .example-sentence { font-size: 20px; }
+  .sentence-recall-translation { font-size: 28px; }
+  .sentence-recall-input { font-size: 18px; }
 }

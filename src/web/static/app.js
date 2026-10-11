@@ -3,8 +3,7 @@
     choose: document.getElementById("choose-view"),
     empty: document.getElementById("empty-view"),
     recall: document.getElementById("recall-view"),
-    sentence: document.getElementById("sentence-view"),
-    feedback: document.getElementById("feedback-view"),
+    "sentence-recall": document.getElementById("sentence-recall-view"),
     complete: document.getElementById("complete-view"),
     login: document.getElementById("login-view"),
   };
@@ -34,42 +33,20 @@
   const recallHintsEl = document.getElementById("recall-hints");
   const showAnswerButton = document.getElementById("show-answer-button");
   const wordFeedbackEl = document.getElementById("word-feedback");
-  const targetExpressionEl = document.getElementById("target-expression");
-  const targetMeaningEl = document.getElementById("target-meaning");
-  const targetIpaEl = document.getElementById("target-ipa");
-  const sentenceForm = document.getElementById("sentence-form");
-  const sentenceInput = document.getElementById("sentence-input");
-  const sentenceSubmitButton = sentenceForm.querySelector("button[type=submit]");
-  const skipButton = document.getElementById("skip-button");
-  const modKeyEl = document.getElementById("mod-key");
-  const recordingStatusEl = document.getElementById("recording-status");
-  const recordingTimeEl = document.getElementById("recording-time");
-  const spinnerEl = document.getElementById("spinner");
-  const feedbackResultEl = document.getElementById("feedback-result");
   const stepActionsEl = document.getElementById("step-actions");
   const continueButton = document.getElementById("continue-button");
-  const retrySentenceButton = document.getElementById("retry-sentence-button");
   const sessionTallyEl = document.getElementById("session-tally");
   const scoreEl = document.querySelector("#complete-view .score");
   const restartButton = document.getElementById("restart-button");
-  const micButton = document.getElementById("mic-button");
-  const micLabelEl = micButton.querySelector(".mic-label");
-  const micIconEl = micButton.querySelector("i");
-  const transcribingEl = document.getElementById("transcribing");
 
   const MODE_HINTS = {
-    sentence: "Recall the word, then write or say a sentence with it.",
     "recall-only": "Recall the word only. Faster rounds.",
+    example: "Recall the word, then see it in a natural example sentence.",
+    "example-recall": "Recall the word, see its example, then try to recall the sentence too.",
   };
 
   let currentState = null;
-  // Sentence mode, correct answer: the server is already at "sentence",
-  // but the learner first sees the recall result and presses "Use it in a
-  // sentence →". Purely presentational, so it lives only here.
-  let sentenceIntro = false;
   let busy = false;
-
-  modKeyEl.textContent = /Mac|iPhone|iPad/.test(navigator.platform) ? "⌘" : "Ctrl";
 
   // --- small DOM helpers ---------------------------------------------------
 
@@ -95,10 +72,6 @@
 
   function splitMeanings(chinese) {
     return (chinese || "").split(/[；;]/).map((part) => part.trim()).filter(Boolean);
-  }
-
-  function norm(text) {
-    return (text || "").toLowerCase().replace(/[^a-z0-9' ]/g, " ").replace(/\s+/g, " ").trim();
   }
 
   // Every /api/ call goes through here: a 401 (not logged in, or the
@@ -140,17 +113,14 @@
     }
   }
 
-  function setActions({ continueLabel = null, retry = false } = {}) {
+  function setActions({ continueLabel = null } = {}) {
     continueButton.hidden = continueLabel === null;
     if (continueLabel !== null) continueButton.textContent = continueLabel;
-    retrySentenceButton.hidden = !retry;
-    stepActionsEl.hidden = continueLabel === null && !retry;
+    stepActionsEl.hidden = continueLabel === null;
   }
 
   function showLogin() {
     currentState = null;
-    sentenceIntro = false;
-    stopRecording(true);
     showOnly("login");
     warningsEl.hidden = true;
     wordFeedbackEl.hidden = true;
@@ -168,7 +138,6 @@
 
   function renderState(state) {
     currentState = state;
-    if (state.step !== "sentence") sentenceIntro = false;
 
     showWarnings(state.warnings);
     endSessionButton.hidden = !state.can_end_session;
@@ -199,7 +168,7 @@
     }
     wordFeedbackEl.hidden = true;
     setActions();
-    if (state.step !== "sentence") stopRecording(true);
+    hideExample();
 
     if (!keepRemoveToast) hideRemoveToast();
     keepRemoveToast = false;
@@ -209,19 +178,14 @@
       showOnly("recall");
       renderRecall(state);
       answerInput.focus();
-    } else if (state.step === "reveal" || (state.step === "sentence" && sentenceIntro)) {
+    } else if (state.step === "reveal") {
       showOnly("recall");
       renderRecallResult(state);
+      renderExample(state);
       continueButton.focus();
-    } else if (state.step === "sentence") {
-      showOnly("sentence");
-      renderSentence(state);
-      sentenceInput.focus();
-    } else if (state.step === "feedback") {
-      showOnly("feedback");
-      renderFeedback(state);
-      setActions({ continueLabel: "Continue", retry: true });
-      continueButton.focus();
+    } else if (state.step === "sentence-recall") {
+      showOnly("sentence-recall");
+      renderSentenceRecall(state);
     } else if (state.step === "complete") {
       showOnly("complete");
       renderComplete(state);
@@ -326,161 +290,8 @@
     }
     wordFeedbackEl.hidden = false;
 
-    let label;
-    if (state.step === "sentence") label = "Use it in a sentence →";
-    else if (state.position === state.total) label = "Finish";
-    else label = "Next word →";
+    const label = state.position === state.total ? "Finish" : "Next word →";
     setActions({ continueLabel: label });
-  }
-
-  function renderSentence(state) {
-    const accepted = state.accepted_expressions || [];
-    targetExpressionEl.textContent = accepted[0] || "";
-    targetIpaEl.textContent = state.ipa ? `/${state.ipa}/` : "";
-    const meaning = document.createTextNode(splitMeanings(state.chinese).join(" · "));
-    const labels = posList(state.pos);
-    if (labels) targetMeaningEl.replaceChildren(labels, meaning);
-    else targetMeaningEl.replaceChildren(meaning);
-    sentenceInput.value = "";
-    sentenceInput.disabled = false;
-    spinnerEl.hidden = true;
-    transcribingEl.hidden = true;
-    micButton.hidden = !state.voice_available;
-    updateReviewButton();
-  }
-
-  // Word-level LCS between the learner's sentence and the correction: the
-  // original's unmatched tokens were removed, the correction's were added.
-  function diffTokens(original, corrected) {
-    const a = original.split(/\s+/).filter(Boolean);
-    const b = corrected.split(/\s+/).filter(Boolean);
-    const key = (token) => token.toLowerCase().replace(/[^a-z0-9']/g, "");
-    const dp = Array.from({ length: a.length + 1 }, () => new Array(b.length + 1).fill(0));
-    for (let i = a.length - 1; i >= 0; i--) {
-      for (let j = b.length - 1; j >= 0; j--) {
-        dp[i][j] = key(a[i]) === key(b[j]) ? dp[i + 1][j + 1] + 1 : Math.max(dp[i + 1][j], dp[i][j + 1]);
-      }
-    }
-    const removed = new Set();
-    const added = new Set();
-    let i = 0;
-    let j = 0;
-    while (i < a.length && j < b.length) {
-      if (key(a[i]) === key(b[j])) {
-        i++;
-        j++;
-      } else if (dp[i + 1][j] >= dp[i][j + 1]) {
-        removed.add(i++);
-      } else {
-        added.add(j++);
-      }
-    }
-    while (i < a.length) removed.add(i++);
-    while (j < b.length) added.add(j++);
-    return {
-      original: a.map((text, index) => ({ text, marked: removed.has(index) })),
-      corrected: b.map((text, index) => ({ text, marked: added.has(index) })),
-    };
-  }
-
-  function tokenParagraph(className, tokens, markedClass) {
-    const p = el("p", className);
-    tokens.forEach((token, index) => {
-      if (index > 0) p.append(" ");
-      p.append(token.marked ? el("span", markedClass, token.text) : token.text);
-    });
-    return p;
-  }
-
-  // One note per point: numbered lists ("…two issues: 1) … 2) …") split on
-  // their numbers, dropping a colon-ended lead-in; prose splits by sentence.
-  function splitNotes(explanation) {
-    const text = (explanation || "").trim();
-    if (!text) return [];
-    const parts = text.split(/(?:^|\s)\(?\d{1,2}[).]\s+/);
-    if (parts.length > 2) {
-      const [intro, ...items] = parts.map((part) => part.trim());
-      const notes = items.map((item) => item.replace(/[;,]$/, "")).filter(Boolean);
-      if (intro && !intro.endsWith(":")) notes.unshift(intro);
-      return notes;
-    }
-    return text
-      .split(/(?<=[.!?。])\s+/)
-      .map((note) => note.trim())
-      .filter(Boolean);
-  }
-
-  function block(labelText, labelClass) {
-    const section = el("div", "feedback-block");
-    section.append(el("p", `label${labelClass ? ` ${labelClass}` : ""}`, labelText));
-    return section;
-  }
-
-  function renderFeedback(state) {
-    const feedback = state.feedback;
-    const original = state.sentence || "";
-    const word = (state.accepted_expressions || [])[0] || "";
-    feedbackResultEl.replaceChildren();
-
-    const head = el("div", "feedback-head");
-    head.append(el("h2", null, word));
-    const pronunciation = ipaEl(state.ipa);
-    if (pronunciation) head.append(pronunciation);
-    const labels = posList(state.pos);
-    if (labels) head.append(labels);
-    feedbackResultEl.append(head);
-
-    let kind;
-    if (!feedback.available) kind = "unavailable";
-    else if (feedback.uses_expression === false) kind = "missing";
-    else if (
-      feedback.needs_correction &&
-      feedback.corrected &&
-      norm(feedback.corrected) !== norm(original)
-    )
-      kind = "fix";
-    else kind = "natural";
-    feedbackResultEl.dataset.state = kind;
-
-    const notes = splitNotes(feedback.explanation);
-    if (kind === "natural") {
-      head.append(stamp("correct", "check-circle", "Natural", null, true));
-    } else if (kind === "fix") {
-      head.append(stamp("incorrect", "pencil-simple-line", "Small fix", null, true));
-    } else if (kind === "missing") {
-      head.append(stamp("incorrect", "x-circle", "Word missing", null, true));
-      notes.unshift(`Your sentence doesn't use “${word}”.`);
-    }
-
-    const wrote = block("You wrote");
-    if (kind === "fix") {
-      const diff = diffTokens(original, feedback.corrected);
-      wrote.append(tokenParagraph("original-sentence", diff.original, "token-removed"));
-      feedbackResultEl.append(wrote);
-      const better = block("More natural", "label--accent");
-      better.append(tokenParagraph("corrected-sentence", diff.corrected, "token-added"));
-      feedbackResultEl.append(better);
-    } else {
-      wrote.append(el("p", "original-sentence", original));
-      feedbackResultEl.append(wrote);
-    }
-
-    if (kind === "unavailable") {
-      const why = block("Review");
-      why.append(el("p", "note-text", "Sorry, sentence correction is unavailable right now."));
-      feedbackResultEl.append(why);
-    } else if (notes.length > 0) {
-      const why = block("Why");
-      why.classList.add("notes");
-      for (const note of notes) {
-        const p = el("p", "note");
-        const dash = el("span", "note-dash", "—");
-        dash.setAttribute("aria-hidden", "true");
-        p.append(dash, el("span", null, note));
-        why.append(p);
-      }
-      feedbackResultEl.append(why);
-    }
   }
 
   function renderComplete(state) {
@@ -498,7 +309,7 @@
 
   function getSelectedMode() {
     const checked = document.querySelector('input[name="mode-choice"]:checked');
-    return checked ? checked.value : "sentence";
+    return checked ? checked.value : "example";
   }
 
   function wordCount(count) {
@@ -557,9 +368,7 @@
       if (!(await postJson("/api/answer", { answer }))) return;
       const resp = await api("/api/state");
       if (!resp) return;
-      const state = await resp.json();
-      sentenceIntro = state.step === "sentence";
-      renderState(state);
+      renderState(await resp.json());
     } finally {
       busy = false;
     }
@@ -567,11 +376,6 @@
 
   async function continueStep() {
     if (busy || continueButton.hidden) return;
-    if (sentenceIntro && currentState && currentState.step === "sentence") {
-      sentenceIntro = false;
-      renderState(currentState);
-      return;
-    }
     busy = true;
     try {
       const resp = await postJson("/api/continue");
@@ -605,14 +409,7 @@
 
   continueButton.addEventListener("click", continueStep);
 
-  retrySentenceButton.addEventListener("click", async () => {
-    const resp = await postJson("/api/retry-sentence");
-    if (!resp) return;
-    renderState(await resp.json());
-  });
-
   endSessionButton.addEventListener("click", async () => {
-    stopRecording(true);
     const resp = await postJson("/api/end");
     if (resp && resp.ok) renderState(await resp.json());
   });
@@ -639,148 +436,162 @@
     });
   }
 
-  // --- sentence step -------------------------------------------------------
+  // --- example sentences (spec 021) ----------------------------------------
+  // After each answer the word's example sentence is shown. A new word's
+  // example is written in the background while the learner recalls it;
+  // while it is still "pending" the page asks again once a second, for at
+  // most six seconds (contracts/practice-ui.md).
 
-  function updateReviewButton() {
-    sentenceSubmitButton.disabled = sentenceInput.value.trim() === "" || !spinnerEl.hidden;
+  const exampleBlockEl = document.getElementById("example-block");
+  const exampleSentenceEl = document.getElementById("example-sentence");
+  const exampleTranslationEl = document.getElementById("example-translation");
+  const exampleNoteEl = document.getElementById("example-note");
+  const newExampleButton = document.getElementById("new-example-button");
+  const EXAMPLE_POLL_LIMIT = 6;
+  let examplePollTimer = null;
+  let examplePolls = 0;
+
+  function hideExample() {
+    clearTimeout(examplePollTimer);
+    examplePolls = 0;
+    exampleBlockEl.hidden = true;
   }
 
-  sentenceInput.addEventListener("input", updateReviewButton);
+  function showExampleNote(text) {
+    exampleSentenceEl.textContent = "";
+    exampleTranslationEl.textContent = "";
+    exampleNoteEl.textContent = text;
+    exampleNoteEl.hidden = false;
+  }
 
-  sentenceInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
-      event.preventDefault();
-      sentenceForm.requestSubmit();
+  function renderExample(state) {
+    clearTimeout(examplePollTimer);
+    if (!state.example_status || state.example_status === "off") {
+      exampleBlockEl.hidden = true;
+      return;
     }
-  });
+    exampleBlockEl.hidden = false;
+    newExampleButton.hidden = state.example_status !== "ready";
+    if (state.example_status === "ready" && state.example) {
+      examplePolls = 0;
+      exampleNoteEl.hidden = true;
+      exampleSentenceEl.textContent = state.example.sentence;
+      exampleTranslationEl.textContent = state.example.translation;
+    } else if (state.example_status === "pending" && examplePolls < EXAMPLE_POLL_LIMIT) {
+      showExampleNote("Writing an example…");
+      examplePolls += 1;
+      examplePollTimer = setTimeout(pollExample, 1000);
+    } else {
+      examplePolls = 0;
+      showExampleNote("No example right now.");
+    }
+  }
 
-  sentenceForm.addEventListener("submit", async (event) => {
-    event.preventDefault();
+  async function pollExample() {
+    const resp = await api("/api/state");
+    if (!resp) return;
+    const state = await resp.json();
+    // Only refresh the example, and only if the learner is still there.
+    if (currentState && state.step === currentState.step && state.position === currentState.position) {
+      currentState = state;
+      renderExample(state);
+    }
+  }
 
-    if (sentenceInput.value.trim() === "") {
-      const shouldSkip = confirm("You didn't write a sentence — skip this word?");
-      if (!shouldSkip) {
+  newExampleButton.addEventListener("click", async () => {
+    if (busy) return;
+    busy = true;
+    newExampleButton.disabled = true;
+    try {
+      const resp = await postJson("/api/example/new");
+      if (!resp) return;
+      const data = await resp.json();
+      if (!resp.ok) {
+        showExampleNote(data.error);
         return;
       }
-      if (!(await postJson("/api/skip"))) return;
-      await fetchState();
-      return;
-    }
-    if (!spinnerEl.hidden) return;
-
-    stopRecording(true);
-    spinnerEl.hidden = false;
-    sentenceInput.disabled = true;
-    sentenceSubmitButton.disabled = true;
-    try {
-      const resp = await postJson("/api/sentence", { sentence: sentenceInput.value });
-      if (!resp) return;
-      await resp.json();
+      currentState = data;
+      renderExample(data);
     } finally {
-      spinnerEl.hidden = true;
-      sentenceInput.disabled = false;
-      updateReviewButton();
+      newExampleButton.disabled = false;
+      busy = false;
     }
-    await fetchState();
   });
 
-  skipButton.addEventListener("click", async () => {
-    stopRecording(true);
-    const resp = await postJson("/api/skip");
-    if (!resp) return;
-    renderState(await resp.json());
-  });
+  // --- sentence recall (spec 021) ------------------------------------------
+  // In the example-recall mode the learner sees the example's translation,
+  // tries the sentence (typed or just said aloud), reveals it and marks
+  // Got it / Not yet. The typed attempt never leaves the browser; only the
+  // mark is sent.
 
-  // Voice input (spec 009): records a short clip and sends it to
-  // /api/transcribe, landing the recognized text in the same field a
-  // typed sentence uses — never auto-submitted (FR-002).
-  let mediaRecorder = null;
-  let audioChunks = [];
-  let recordingTimer = null;
-  let discardRecording = false;
+  const sentenceRecallTranslationEl = document.getElementById("sentence-recall-translation");
+  const sentenceRecallFieldEl = document.getElementById("sentence-recall-field");
+  const sentenceRecallInput = document.getElementById("sentence-recall-input");
+  const sentenceRecallCheckEl = document.getElementById("sentence-recall-check");
+  const sentenceRecallAttemptRowEl = document.getElementById("sentence-recall-attempt-row");
+  const sentenceRecallAttemptEl = document.getElementById("sentence-recall-attempt");
+  const sentenceRecallSentenceEl = document.getElementById("sentence-recall-sentence");
+  const sentenceRecallActionsEl = document.getElementById("sentence-recall-actions");
+  const showSentenceButton = document.getElementById("show-sentence-button");
+  const skipSentenceButton = document.getElementById("skip-sentence-button");
+  const gotItButton = document.getElementById("got-it-button");
+  const notYetButton = document.getElementById("not-yet-button");
+  let sentenceRecallWord = null;
 
-  function setRecordingUi(recording) {
-    micLabelEl.textContent = recording ? "Stop" : "Speak instead";
-    micIconEl.className = `ph-duotone ${recording ? "ph-stop-circle" : "ph-microphone"}`;
-    sentenceInput.classList.toggle("is-recording", recording);
-    recordingStatusEl.hidden = !recording;
-    clearInterval(recordingTimer);
-    if (recording) {
-      const startedAt = Date.now();
-      recordingTimeEl.textContent = "0:00";
-      recordingTimer = setInterval(() => {
-        const secs = Math.floor((Date.now() - startedAt) / 1000);
-        recordingTimeEl.textContent = `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`;
-      }, 1000);
+  function renderSentenceRecall(state) {
+    const example = state.example || {};
+    const revealed = Boolean(state.sentence_revealed);
+    // A fresh word clears the box; a re-render of the same word keeps it.
+    if (sentenceRecallWord !== state.position) {
+      sentenceRecallWord = state.position;
+      sentenceRecallInput.value = "";
+    }
+    sentenceRecallTranslationEl.textContent = example.translation || "";
+    sentenceRecallFieldEl.hidden = revealed;
+    sentenceRecallCheckEl.hidden = !revealed;
+    showSentenceButton.hidden = revealed;
+    skipSentenceButton.hidden = revealed;
+    gotItButton.hidden = !revealed;
+    notYetButton.hidden = !revealed;
+    if (revealed) {
+      const attempt = sentenceRecallInput.value.trim();
+      sentenceRecallAttemptEl.textContent = attempt;
+      sentenceRecallAttemptRowEl.hidden = attempt === "";
+      sentenceRecallSentenceEl.textContent = example.sentence || "";
+      gotItButton.focus();
+    } else {
+      sentenceRecallInput.focus();
     }
   }
 
-  function stopRecording(discard) {
-    if (mediaRecorder && mediaRecorder.state === "recording") {
-      discardRecording = discard;
-      mediaRecorder.stop();
-    }
-  }
-
-  micButton.addEventListener("click", async () => {
-    if (mediaRecorder && mediaRecorder.state === "recording") {
-      stopRecording(false);
-      return;
-    }
-
-    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
-      micButton.hidden = true;
-      return;
-    }
-
+  async function sendSentenceRecall(mark) {
+    if (busy) return;
+    busy = true;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const preferredTypes = [
-        "audio/webm;codecs=opus",
-        "audio/webm",
-        "audio/ogg;codecs=opus",
-        "audio/mp4",
-      ];
-      const mimeType = preferredTypes.find((type) => MediaRecorder.isTypeSupported(type));
-      mediaRecorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
-      audioChunks = [];
-      discardRecording = false;
+      const resp = await postJson("/api/sentence-recall", { mark });
+      if (!resp) return;
+      const data = await resp.json();
+      if (!resp.ok) {
+        alert(data.error);
+        return;
+      }
+      if (mark !== "reveal") sentenceRecallWord = null;
+      renderState(data);
+    } finally {
+      busy = false;
+    }
+  }
 
-      mediaRecorder.addEventListener("dataavailable", (event) => {
-        if (event.data.size > 0) {
-          audioChunks.push(event.data);
-        }
-      });
+  showSentenceButton.addEventListener("click", () => sendSentenceRecall("reveal"));
+  skipSentenceButton.addEventListener("click", () => sendSentenceRecall("skip"));
+  gotItButton.addEventListener("click", () => sendSentenceRecall("got"));
+  notYetButton.addEventListener("click", () => sendSentenceRecall("not_yet"));
 
-      mediaRecorder.addEventListener("stop", async () => {
-        stream.getTracks().forEach((track) => track.stop());
-        setRecordingUi(false);
-        if (discardRecording) return;
-        const blob = new Blob(audioChunks, { type: mediaRecorder.mimeType || "audio/webm" });
-        transcribingEl.hidden = false;
-        try {
-          const resp = await api("/api/transcribe", {
-            method: "POST",
-            headers: { "Content-Type": blob.type },
-            body: blob,
-          });
-          if (!resp) return;
-          const data = await resp.json();
-          if (data.available) {
-            sentenceInput.value = data.text;
-            updateReviewButton();
-          }
-        } finally {
-          transcribingEl.hidden = true;
-        }
-      });
-
-      mediaRecorder.start();
-      setRecordingUi(true);
-    } catch {
-      // Microphone permission denied, no device, or an insecure context —
-      // fall back to typing only (FR-004).
-      micButton.hidden = true;
+  // Cmd/Ctrl+Enter in the box shows the sentence (plain Enter adds a line).
+  sentenceRecallInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      sendSentenceRecall("reveal");
     }
   });
 
@@ -1216,14 +1027,15 @@
   let removeToastTimer = null;
 
   function placeRemoveButton(state) {
-    const steps = ["recall", "reveal", "sentence"];
+    const steps = ["recall", "reveal", "sentence-recall"];
     removeWordButton.hidden = state.word_source === undefined || !steps.includes(state.step);
     if (removeWordButton.hidden) return;
-    if (state.step === "reveal" || (state.step === "sentence" && sentenceIntro)) {
+    if (state.step === "reveal") {
       if (removeWordButton.parentNode !== stepActionsEl) stepActionsEl.append(removeWordButton);
-    } else if (state.step === "sentence") {
-      // Beside Skip, before the right-aligned keyboard hint.
-      if (skipButton.nextElementSibling !== removeWordButton) skipButton.after(removeWordButton);
+    } else if (state.step === "sentence-recall") {
+      if (removeWordButton.parentNode !== sentenceRecallActionsEl) {
+        sentenceRecallActionsEl.append(removeWordButton);
+      }
     } else if (removeWordButton.parentNode !== recallHintsHome) {
       recallHintsHome.append(removeWordButton);
     }
@@ -1261,7 +1073,6 @@
         alert(data.error);
         return;
       }
-      sentenceIntro = false;
       keepRemoveToast = true;
       renderState(data.state);
       showRemoveToast(data.removed.english, data.undo);

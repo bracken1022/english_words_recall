@@ -20,7 +20,7 @@ from src.services.enrichment import (
     existing_lookup_for,
 )
 from src.services.enrichment_client import request_pos
-from src.services.speech_client import is_available, transcribe
+from src.services.examples import ExampleService, ExampleUnavailable
 from src.services.word_lists import (
     ListExistsError,
     UploadFormatError,
@@ -29,7 +29,12 @@ from src.services.word_lists import (
     sanitize_list_name,
 )
 from src.web.session_registry import SessionRegistry
-from src.web.session_state import PracticeSession, WrongStepError
+from src.web.session_state import (
+    SENTENCE_RECALL_MARKS,
+    PracticeSession,
+    WrongStepError,
+    normalize_mode,
+)
 
 MAX_UPLOAD_BYTES = 1024 * 1024
 MAX_SKIP_MESSAGES = 20
@@ -46,7 +51,7 @@ def create_app(
     model: str = "qwen3:14b",
     offer_choice: bool = False,
     order: str = "sequential",
-    mode: str = "sentence",
+    mode: str = "example",
     accounts: list[Account] | None = None,
     word_lists_dir: Path | None = None,
 ) -> Flask:
@@ -58,10 +63,13 @@ def create_app(
     app = Flask(__name__)
     app.config["OLLAMA_URL"] = ollama_url
     app.config["MODEL"] = model
-    app.config["VOICE_AVAILABLE"] = is_available()
 
     accounts_by_name: dict[str, Account] = {}
-    store: WordListStore | None = None
+    store: WordListStore | None = (
+        WordListStore(word_lists_dir) if accounts is not None and word_lists_dir is not None else None
+    )
+    # Spec 021: example sentences, made on first practice and then kept.
+    app.example_service = ExampleService(store, ollama_url, model)
     if accounts is None:
         app.practice_session = PracticeSession(
             vocab_dir=vocab_dir,
@@ -70,6 +78,7 @@ def create_app(
             offer_choice=offer_choice,
             order=order,
             mode=mode,
+            example_service=app.example_service.bind(None),
         )
     else:
         # A fresh key per process: restarting the server logs everyone out.
@@ -80,7 +89,6 @@ def create_app(
         # Live logins: random login id (kept in the cookie) -> username.
         # Logout deletes the id, so a copy of the old cookie stops working.
         active_logins: dict[str, str] = {}
-        store = WordListStore(word_lists_dir) if word_lists_dir is not None else None
         app.session_registry = SessionRegistry(
             vocab_dir=vocab_dir,
             group=group,
@@ -88,6 +96,7 @@ def create_app(
             order=order,
             mode=mode,
             word_lists=store,
+            example_service=app.example_service,
         )
 
         @app.before_request
@@ -389,7 +398,7 @@ def create_app(
         return render_template("index.html")
 
     def _state_json() -> dict:
-        state = {**_current_session().state(), "voice_available": app.config["VOICE_AVAILABLE"]}
+        state = _current_session().state()
         if accounts is not None:
             state["account"] = _account_json(_current_account())
             if store is not None:
@@ -399,11 +408,6 @@ def create_app(
     @app.get("/api/state")
     def get_state():
         return jsonify(_state_json())
-
-    @app.post("/api/transcribe")
-    def post_transcribe():
-        result = transcribe(request.get_data(), content_type=request.content_type or "")
-        return jsonify({"available": result.available, "text": result.text})
 
     @app.post("/api/answer")
     def post_answer():
@@ -416,21 +420,6 @@ def create_app(
             return jsonify({"error": str(exc)}), 409
         return jsonify(result)
 
-    @app.post("/api/sentence")
-    def post_sentence():
-        body = request.get_json(silent=True) or {}
-        if "sentence" not in body:
-            return jsonify({"error": "missing 'sentence'"}), 400
-        try:
-            result = _current_session().submit_sentence(
-                body["sentence"],
-                base_url=app.config["OLLAMA_URL"],
-                model=app.config["MODEL"],
-            )
-        except WrongStepError as exc:
-            return jsonify({"error": str(exc)}), 409
-        return jsonify(result)
-
     @app.post("/api/select")
     def post_select():
         body = request.get_json(silent=True) or {}
@@ -439,19 +428,9 @@ def create_app(
         select_order = body.get("order")
         if select_order not in ("sequential", "random"):
             select_order = "sequential"
-        select_mode = body.get("mode")
-        if select_mode not in ("sentence", "recall-only"):
-            select_mode = "sentence"
+        select_mode = normalize_mode(body.get("mode"))
         try:
             _current_session().select_collection(body["collection"], order=select_order, mode=select_mode)
-        except WrongStepError as exc:
-            return jsonify({"error": str(exc)}), 409
-        return jsonify(_current_session().state())
-
-    @app.post("/api/skip")
-    def post_skip():
-        try:
-            _current_session().skip_sentence()
         except WrongStepError as exc:
             return jsonify({"error": str(exc)}), 409
         return jsonify(_current_session().state())
@@ -472,12 +451,26 @@ def create_app(
             return jsonify({"error": str(exc)}), 409
         return jsonify(_current_session().state())
 
-    @app.post("/api/retry-sentence")
-    def post_retry_sentence():
+    @app.post("/api/example/new")
+    def post_new_example():
         try:
-            _current_session().retry_sentence()
-        except WrongStepError as exc:
-            return jsonify({"error": str(exc)}), 409
+            _current_session().renew_example()
+        except WrongStepError:
+            return jsonify({"error": "There's no example to replace right now."}), 409
+        except ExampleUnavailable:
+            return jsonify({"error": "Couldn't make a new example right now."}), 503
+        return jsonify(_current_session().state())
+
+    @app.post("/api/sentence-recall")
+    def post_sentence_recall():
+        body = request.get_json(silent=True) or {}
+        mark = body.get("mark")
+        if mark not in SENTENCE_RECALL_MARKS:
+            return jsonify({"error": "mark must be reveal, got, not_yet or skip"}), 400
+        try:
+            _current_session().sentence_recall_action(mark)
+        except WrongStepError:
+            return jsonify({"error": "Not recalling a sentence."}), 409
         return jsonify(_current_session().state())
 
     @app.post("/api/continue")

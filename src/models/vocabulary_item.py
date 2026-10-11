@@ -27,6 +27,9 @@ class VocabularyItem:
     pos_problem: str | None = field(default=None, compare=False, repr=False)
     # The file the word was loaded from (spec 020), so it can be removed.
     source: Path | None = field(default=None, compare=False, repr=False)
+    # A saved example sentence and its translation (spec 021).
+    example: str | None = field(default=None, compare=False, repr=False)
+    example_zh: str | None = field(default=None, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.english, str):
@@ -63,7 +66,13 @@ class VocabularyItem:
             ipa_problem=ipa_problem,
             pos=pos or [],
             pos_problem=pos_problem,
+            example=_text(block.get("example")),
+            example_zh=_text(block.get("example_zh")),
         )
 
     def accepted_expressions(self) -> list[str]:
         return [self.english, *self.alternates]
+
+
+def _text(value) -> str | None:
+    return value.strip() if isinstance(value, str) and value.strip() else None
