@@ -644,6 +644,26 @@
     unavailable: "Voice isn't working right now. Type it instead.",
   };
 
+  // Recorded as it is: the browser's call processing (echo cancellation,
+  // noise suppression, auto gain) can wipe out a voice on USB speaker-mics,
+  // and Whisper copes with raw audio.
+  const MIC_SETTINGS = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+
+  // The system's input device. Chrome's "default" follows macOS; left to
+  // itself Chrome uses its own mic setting, which can be a silent built-in
+  // mic (lid closed) and ignores a mere preference. Browsers without a
+  // "default" device (Safari) already use the system one.
+  async function openSystemMic() {
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        audio: { ...MIC_SETTINGS, deviceId: { exact: "default" } },
+      });
+    } catch (err) {
+      if (err.name !== "OverconstrainedError" && err.name !== "NotFoundError") throw err;
+      return navigator.mediaDevices.getUserMedia({ audio: MIC_SETTINGS });
+    }
+  }
+
   let recorder = null;
   let recordingTimer = null;
   let recordingLimit = null;
@@ -752,7 +772,7 @@
     const round = voiceRound;
     let stream;
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      stream = await openSystemMic();
     } catch {
       showVoiceNote("blocked");
       return;

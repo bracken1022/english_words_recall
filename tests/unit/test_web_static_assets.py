@@ -626,6 +626,21 @@ def test_voice_js_records_uploads_and_appends():
     assert re.search(r"sentenceRecallInput\.value\s*=\s*[^;]*sentenceRecallInput\.value", section)
 
 
+def test_voice_records_the_system_mic_without_call_processing():
+    """The system's default input, required by name: otherwise Chrome uses
+    its own mic setting, which can be a silent built-in mic, and it ignores
+    a mere preference. Falls back to the browser's mic where there is no
+    "default" device (Safari). Echo cancellation, noise suppression and auto
+    gain are off: they can erase the voice on a USB speaker-mic."""
+    section = _voice_js_section()
+    assert 'deviceId: { exact: "default" }' in section
+    assert "OverconstrainedError" in section
+    assert "getUserMedia({ audio: MIC_SETTINGS })" in section
+    assert "stream = await openSystemMic()" in section
+    for setting in ("echoCancellation", "noiseSuppression", "autoGainControl"):
+        assert re.search(rf"{setting}:\s*false", section), setting
+
+
 def test_voice_never_reveals_or_marks_by_itself():
     section = _voice_js_section()
     assert "sendSentenceRecall" not in section
