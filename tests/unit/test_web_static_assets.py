@@ -536,8 +536,11 @@ def test_app_js_example_block():
     for text in ("/api/example/new", "Writing an example…", "No example right now."):
         assert text in js
     assert ">New example</button>" in TEMPLATE_PATH.read_text(encoding="utf-8")
-    for removed in ('/api/sentence"', "/api/transcribe", "MediaRecorder"):
-        assert removed not in js
+    assert '/api/sentence"' not in js
+    # Voice came back in spec 022, but only in sentence recall.
+    outside_voice = js.replace(_voice_js_section(), "")
+    for text in ("/api/transcribe", "MediaRecorder"):
+        assert text not in outside_voice
 
 
 def _sentence_recall_js_section() -> str:
@@ -573,7 +576,98 @@ def test_app_js_sentence_recall():
         assert text in html, text
 
 
-def test_typed_sentence_attempt_stays_in_the_browser():
+def test_sentence_attempt_is_sent_only_with_the_reveal():
+    # Spec 022 (research R3) sends the attempt once, with the reveal, to
+    # get the comparison; no other request carries it.
     section = _sentence_recall_js_section()
-    for call in re.findall(r"postJson\([^)]*\)", section):
-        assert "attempt" not in call.lower() and "Input" not in call
+    calls = re.findall(r"postJson\([^)]*\)", section)
+    assert calls
+    for call in calls:
+        assert "Input" not in call
+    assert re.search(r"mark === \"reveal\"[^;]*attempt", section)
+
+
+# --- spec 022: voice in sentence recall ------------------------------------------
+
+
+def _voice_js_section() -> str:
+    js = JS_PATH.read_text(encoding="utf-8")
+    start = js.index("// --- voice in sentence recall (spec 022)")
+    end = js.index("// ---", start + 10)
+    return js[start:end]
+
+
+def test_speak_button_only_in_sentence_recall():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    start, end = _section_bounds(html, "sentence-recall-view")
+    section = html[start:end]
+    for element_id in ("speak-button", "voice-status", "voice-hint"):
+        assert f'id="{element_id}"' in section, element_id
+    assert html.count('id="speak-button"') == 1
+    recall_start, recall_end = _section_bounds(html, "recall-view")
+    assert "speak" not in html[recall_start:recall_end].lower()
+
+
+def test_attempt_label_says_not_saved():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    assert "Your sentence (optional, not saved)" in html
+    assert "stays on this device" not in html
+
+
+def test_voice_js_records_uploads_and_appends():
+    section = _voice_js_section()
+    for text in ("MediaRecorder", "/api/transcribe", "audio/webm", "audio/mp4"):
+        assert text in section, text
+    assert re.search(r"30\s*\*\s*1000|30000", section)
+    assert "We heard this. Fix anything before you check." in (
+        section + TEMPLATE_PATH.read_text(encoding="utf-8")
+    )
+    # Appended after what's typed, never replacing it.
+    assert re.search(r"sentenceRecallInput\.value\s*=\s*[^;]*sentenceRecallInput\.value", section)
+
+
+def test_voice_never_reveals_or_marks_by_itself():
+    section = _voice_js_section()
+    assert "sendSentenceRecall" not in section
+    assert "innerHTML" not in section
+
+
+def test_comparison_is_rendered_with_word_classes():
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert "comparison" in _sentence_recall_js_section()
+    assert "word--missing" in js and "word--extra" in js
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    assert "Differences are a guide. You decide." in html
+    css = CSS_PATH.read_text(encoding="utf-8")
+    assert ".word--missing" in css and ".word--extra" in css
+
+
+def test_voice_fallback_notes():
+    section = _voice_js_section()
+    for note in (
+        "Voice needs this page on the Mac itself (or over https).",
+        "The microphone is blocked. Allow it in the browser, or type instead.",
+        "Didn't catch that. Try again, or type it.",
+        "Voice isn't working right now. Type it instead.",
+    ):
+        assert note in section, note
+    for check in ("isSecureContext", "navigator.mediaDevices", "window.MediaRecorder"):
+        assert check in section, check
+    assert '"nothing_heard"' in section
+
+
+def test_voice_failures_leave_the_box_alone():
+    # Only addHeardText writes to the box, and only for an "ok" reply.
+    section = _voice_js_section()
+    writes = re.findall(r"sentenceRecallInput\.value\s*=", section)
+    assert len(writes) == 1
+    assert re.search(r'outcome === "ok" && text\) addHeardText', section)
+
+
+def test_voice_stops_when_the_step_moves_on():
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert "function cancelVoice" in _voice_js_section()
+    show_login = js[js.index("function showLogin") : js.index("function showLoginError")]
+    assert "cancelVoice()" in show_login
+    render_state = js[js.index("function renderState") : js.index("function renderState") + 300]
+    assert "cancelVoice()" in render_state

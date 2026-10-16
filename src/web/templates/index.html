@@ -109,16 +109,27 @@
       <p class="label label--accent">Recall the sentence</p>
       <h1 id="sentence-recall-translation" class="sentence-recall-translation" lang="zh-Hans"></h1>
       <div id="sentence-recall-field" class="field sentence-recall-field">
-        <label for="sentence-recall-input">Your sentence (optional, stays on this device)</label>
+        <label for="sentence-recall-input">Your sentence (optional, not saved)</label>
         <textarea id="sentence-recall-input" class="input sentence-recall-input" rows="2" placeholder="Type it, or just say it" autocomplete="off" autocapitalize="off" spellcheck="false"></textarea>
+        <div class="voice-row">
+          <button id="speak-button" type="button" class="btn btn-secondary speak-button" hidden><i class="ph-duotone ph-microphone" aria-hidden="true"></i><span id="speak-label">Speak</span></button>
+          <div id="voice-status" class="status-line voice-status" aria-live="polite" hidden>
+            <span id="voice-status-dot" class="status-dot" aria-hidden="true"></span>
+            <span id="voice-status-text"></span>
+            <span id="voice-time" class="text-muted tabular"></span>
+          </div>
+        </div>
+        <p id="voice-hint" class="voice-hint text-muted" hidden>We heard this. Fix anything before you check.</p>
+        <p id="voice-note" class="voice-note text-muted" hidden></p>
       </div>
       <div id="sentence-recall-check" class="sentence-recall-check" aria-live="polite" hidden>
         <div id="sentence-recall-attempt-row" hidden>
-          <p class="label">You wrote</p>
+          <p class="label">You said / wrote</p>
           <p id="sentence-recall-attempt" class="sentence-recall-attempt" lang="en"></p>
         </div>
         <p class="label">Example</p>
         <p id="sentence-recall-sentence" class="example-sentence" lang="en"></p>
+        <p id="comparison-note" class="comparison-note text-muted" hidden>Differences are a guide. You decide.</p>
       </div>
       <div id="sentence-recall-actions" class="action-row action-row--spaced">
         <button id="show-sentence-button" type="button" class="btn btn-primary btn-lg">Show sentence</button>

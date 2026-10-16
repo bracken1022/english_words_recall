@@ -18,6 +18,11 @@ dev = [
     "pytest>=8.0",
     "ruff>=0.5",
 ]
+# Local speech-to-text for sentence recall (spec 022). Optional: without
+# it the Speak button is simply not offered.
+voice = [
+    "faster-whisper>=1.0",
+]
 
 [project.scripts]
 english-tutor = "src.cli.__main__:main"

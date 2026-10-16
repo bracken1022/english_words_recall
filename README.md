@@ -396,9 +396,11 @@ you are practicing — with its Chinese translation underneath:
 
 **Sentence recall** (`example-recall` mode, "+ sentence recall" in the
 web UI): after the example, you see only its Chinese translation and try
-to say or type the English sentence. Press **Show sentence** to compare,
-then mark **Got it** or **Not yet** — that mark is saved in your practice
-history (`sentence_recall: got`); what you typed stays in your browser.
+to say or type the English sentence. Press **Show sentence** to compare:
+words of the example you missed are underlined and extra words in your
+attempt are struck through. The highlight is only a guide; you mark
+**Got it** or **Not yet** yourself, and only that mark is saved in your
+practice history (`sentence_recall: got`), never your attempt.
 **Skip** moves on without a mark. A word with no example skips this step.
 
 To check example quality with your model, run the evaluation on the
@@ -410,6 +412,36 @@ reviewed 50-word set (needs Ollama running):
 
 It prints the automatic pass rate, why examples were rejected and how long
 they took, and writes a `REVIEW.md` (under `backups/`) for you to tick.
+
+### Voice in sentence recall
+
+In sentence recall (web UI) you can press **Speak**, say the sentence and
+press **Stop** (it stops by itself after 30 seconds). What it heard is
+added to the box, where you can fix it before **Show sentence**. Nothing
+is revealed or marked for you. Word recall stays typed.
+
+Speech is turned into text on this Mac by a local Whisper model; no audio
+leaves the machine, and neither the recording nor its text is saved. It's
+an optional install:
+
+```bash
+.venv/bin/pip install -e ".[voice]"
+```
+
+The `base` model (about 150 MB) downloads the first time. Use
+`--speech-model small` for better accuracy at some speed cost. Without the
+install there's no Speak button and typing works as before.
+
+Browsers only allow the microphone on `localhost` or `https`, so open the
+page on the Mac itself (`http://localhost:8420`). From a phone at
+`http://<mac-ip>:8420` the page explains that voice isn't available there.
+
+To measure recognition on your own recordings (one file per sentence, plus
+a `sentences.yml` mapping file name to sentence):
+
+```bash
+.venv/bin/python -m src.tools.eval_voice backups/voice-022-eval
+```
 
 ## Development
 

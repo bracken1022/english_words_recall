@@ -238,3 +238,73 @@ def test_end_session_at_sentence_recall_logs_nothing(tmp_path):
     session.end_session()
     assert session.step == "choose"
     assert _log(tmp_path) == ""
+
+
+# --- spec 022: voice and the attempt comparison ---------------------------------
+
+
+def test_can_transcribe_only_before_reveal_at_sentence_recall(tmp_path):
+    session = _session(tmp_path, FakeExamples(), mode="example-recall")
+    assert session.can_transcribe() is False  # recall
+    session.submit_answer("zealous")
+    assert session.can_transcribe() is False  # reveal
+    session.continue_to_next()
+    assert session.can_transcribe() is True
+    session.sentence_recall_action("reveal")
+    assert session.can_transcribe() is False
+    session.sentence_recall_action("got")
+    assert session.can_transcribe() is False
+
+
+def test_can_transcribe_false_at_choose_and_complete(tmp_path):
+    session = _session(tmp_path, FakeExamples(), offer_choice=True)
+    assert session.step == "choose"
+    assert session.can_transcribe() is False
+    session.select_collection(None, mode="recall-only")
+    for word in ("zealous", "rent"):
+        session.submit_answer(word)
+        session.continue_to_next()
+    assert session.step == "complete"
+    assert session.can_transcribe() is False
+
+
+@pytest.mark.parametrize("available", [True, False])
+def test_voice_available_only_at_sentence_recall(tmp_path, available):
+    session = _session(tmp_path, FakeExamples(), mode="example-recall", voice_available=available)
+    assert "voice_available" not in session.state()
+    session.submit_answer("zealous")
+    assert "voice_available" not in session.state()
+    session.continue_to_next()
+    assert session.state()["voice_available"] is available
+
+
+def test_voice_available_defaults_to_false(tmp_path):
+    session = _at_sentence_recall(tmp_path)
+    assert session.state()["voice_available"] is False
+
+
+def test_reveal_with_attempt_returns_comparison_and_keeps_nothing(tmp_path):
+    session = _at_sentence_recall(tmp_path)
+    attempt = "She is zelous about recycling"
+    comparison = session.sentence_recall_action("reveal", attempt=attempt)
+    assert [m.word for m in comparison.sentence if m.status == "missing"] == ["zealous"]
+    assert [m.word for m in comparison.attempt if m.status == "extra"] == ["zelous"]
+    assert attempt not in repr(vars(session))
+    assert "comparison" not in session.state()
+
+
+@pytest.mark.parametrize("attempt", [None, "", "  "])
+def test_reveal_without_attempt_has_no_comparison(tmp_path, attempt):
+    session = _at_sentence_recall(tmp_path)
+    assert session.sentence_recall_action("reveal", attempt=attempt) is None
+    assert session.state()["sentence_revealed"] is True
+
+
+@pytest.mark.parametrize("mark", ["got", "not_yet", "skip"])
+def test_marks_ignore_the_attempt(tmp_path, mark):
+    session = _at_sentence_recall(tmp_path)
+    session.sentence_recall_action("reveal", attempt="My secret attempt words")
+    assert session.sentence_recall_action(mark, attempt="My secret attempt words") is None
+    log = _log(tmp_path)
+    assert "secret" not in log
+    assert log.count("item: zealous") == 1

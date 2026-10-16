@@ -1,0 +1,145 @@
+# Reviewed comparison cases for src/lib/word_diff.py (spec 022, SC-007,
+# Constitution II). Each case lists the sentence words expected to be
+# marked "missing" and the attempt words expected to be marked "extra",
+# in order and as written; every other word must be "same". Cases with
+# `none: true` must give no comparison at all.
+#
+# Rows marked "accepted limit" are deliberate: the comparison is word by
+# word, so contractions, digits and spelling variants count as different
+# words. The highlight is only a guide and the learner always marks.
+cases:
+  - name: identical
+    attempt: "She is a zealous supporter of the team."
+    sentence: "She is a zealous supporter of the team."
+    missing: []
+    extra: []
+  - name: capitals and final full stop only
+    attempt: "she is a zealous supporter of the team"
+    sentence: "She is a zealous supporter of the team."
+    missing: []
+    extra: []
+  - name: curly apostrophe
+    attempt: "She’s here"
+    sentence: "She's here."
+    missing: []
+    extra: []
+  - name: commas and question mark
+    attempt: "Well, are you coming"
+    sentence: "Well are you coming?"
+    missing: []
+    extra: []
+  - name: quotes and exclamation mark
+    attempt: "He said \"stop\"!"
+    sentence: "He said stop."
+    missing: []
+    extra: []
+  - name: missing middle word
+    attempt: "She is a supporter of the team."
+    sentence: "She is a zealous supporter of the team."
+    missing: ["zealous"]
+    extra: []
+  - name: extra word
+    attempt: "She is a very zealous supporter of the team."
+    sentence: "She is a zealous supporter of the team."
+    missing: []
+    extra: ["very"]
+  - name: two words replaced
+    attempt: "She was a zealous fan of the team."
+    sentence: "She is a zealous supporter of the team."
+    missing: ["is", "supporter"]
+    extra: ["was", "fan"]
+  - name: misspelled word and missing article
+    attempt: "She is a zelous supporter of team"
+    sentence: "She is a zealous supporter of the team."
+    missing: ["zealous", "the"]
+    extra: ["zelous"]
+  - name: missing first word
+    attempt: "is very honest."
+    sentence: "She is very honest."
+    missing: ["She"]
+    extra: []
+  - name: missing last word
+    attempt: "I need to check my"
+    sentence: "I need to check my schedule."
+    missing: ["schedule."]
+    extra: []
+  - name: repeated word
+    attempt: "I take the the bus."
+    sentence: "I take the bus."
+    missing: []
+    extra: ["the"]
+  - name: two words swapped
+    # One of the two swapped words is shown as moved (missing in its real
+    # place, extra where it was said); either word would be a fair guide.
+    attempt: "She always is late."
+    sentence: "She is always late."
+    missing: ["always"]
+    extra: ["always"]
+  - name: nothing in common
+    attempt: "Hello there"
+    sentence: "The plane will take off soon."
+    missing: ["The", "plane", "will", "take", "off", "soon."]
+    extra: ["Hello", "there"]
+  - name: hyphenated word kept whole
+    attempt: "He is a well-known writer"
+    sentence: "He is a well-known writer."
+    missing: []
+    extra: []
+  - name: hyphenated word split
+    attempt: "He is a well known writer"
+    sentence: "He is a well-known writer."
+    missing: ["well-known"]
+    extra: ["well", "known"]
+  - name: stray dash in the attempt
+    attempt: "I was late — sorry"
+    sentence: "I was late, sorry."
+    missing: []
+    extra: []
+  - name: extra spaces and line breaks
+    attempt: "  The rent   is\ndue today. "
+    sentence: "The rent is due today."
+    missing: []
+    extra: []
+  - name: contraction against full form (accepted limit)
+    attempt: "I don't know"
+    sentence: "I do not know."
+    missing: ["do", "not"]
+    extra: ["don't"]
+  - name: digits against number word (accepted limit)
+    attempt: "I have 10 apples"
+    sentence: "I have ten apples."
+    missing: ["ten"]
+    extra: ["10"]
+  - name: British against American spelling (accepted limit)
+    attempt: "My favourite colour is blue."
+    sentence: "My favorite color is blue."
+    missing: ["favorite", "color"]
+    extra: ["favourite", "colour"]
+  - name: inner apostrophe kept
+    attempt: "It's the dog's bowl."
+    sentence: "It's the dog's bowl."
+    missing: []
+    extra: []
+  - name: possessive missing
+    attempt: "It's the dog bowl."
+    sentence: "It's the dog's bowl."
+    missing: ["dog's"]
+    extra: ["dog"]
+  - name: wrong verb form
+    attempt: "She go to school every day."
+    sentence: "She goes to school every day."
+    missing: ["goes"]
+    extra: ["go"]
+  - name: phrasal verb missing particle
+    attempt: "Don't give on your dream."
+    sentence: "Don't give up on your dream."
+    missing: ["up"]
+    extra: []
+  - name: blank attempt
+    attempt: ""
+    sentence: "She is honest."
+    none: true
+  - name: whitespace-only attempt
+    attempt: "   \n  "
+    sentence: "She is honest."
+    none: true

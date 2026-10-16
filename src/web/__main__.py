@@ -4,6 +4,7 @@ import argparse
 import sys
 from pathlib import Path
 
+from src.services import speech_client
 from src.services.accounts import AccountsFileError, load_accounts
 from src.services.llm_client import DEFAULT_MODEL
 from src.web.app import create_app
@@ -46,6 +47,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--port", type=int, default=8420)
     parser.add_argument(
+        "--speech-model",
+        default=speech_client.DEFAULT_MODEL_SIZE,
+        help="Whisper model for voice in sentence recall (default: base; try small)",
+    )
+    parser.add_argument(
         "--accounts-file",
         type=Path,
         default=Path("accounts.yml"),
@@ -71,6 +77,7 @@ def main() -> None:
     except AccountsFileError as exc:
         print(str(exc), file=sys.stderr)
         sys.exit(2)
+    speech_client.configure(args.speech_model)
     app = create_app(
         vocab_dir=args.vocab_dir,
         progress_file=args.progress_file,
@@ -82,10 +89,15 @@ def main() -> None:
         mode=args.mode,
         accounts=accounts,
         word_lists_dir=args.word_lists_dir,
+        preload_voice=True,
     )
     print(f"English Tutor web UI running at http://{args.host}:{args.port} (Ctrl+C to stop)")
     print("Accounts: " + ", ".join(f"{a.username} → {a.progress_file}" for a in accounts))
     print(f"Word lists: {args.word_lists_dir}")
+    if speech_client.is_available():
+        print(f"Voice: on (local Whisper {args.speech_model}; open the page on this Mac to use it)")
+    else:
+        print("Voice: off (install with: pip install -e '.[voice]')")
     # Explicitly threaded so one account's slow sentence review never blocks
     # another account's requests (spec 015, research.md R3).
     app.run(host=args.host, port=args.port, threaded=True)

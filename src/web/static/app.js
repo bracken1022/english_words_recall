@@ -121,6 +121,7 @@
 
   function showLogin() {
     currentState = null;
+    cancelVoice();
     showOnly("login");
     warningsEl.hidden = true;
     wordFeedbackEl.hidden = true;
@@ -138,6 +139,7 @@
 
   function renderState(state) {
     currentState = state;
+    if (state.step !== "sentence-recall" || state.sentence_revealed) cancelVoice();
 
     showWarnings(state.warnings);
     endSessionButton.hidden = !state.can_end_session;
@@ -520,9 +522,9 @@
 
   // --- sentence recall (spec 021) ------------------------------------------
   // In the example-recall mode the learner sees the example's translation,
-  // tries the sentence (typed or just said aloud), reveals it and marks
-  // Got it / Not yet. The typed attempt never leaves the browser; only the
-  // mark is sent.
+  // tries the sentence (typed, or spoken: spec 022), reveals it and marks
+  // Got it / Not yet. The attempt is sent once, with the reveal, to get the
+  // word-by-word comparison (spec 022, research R3); it is never stored.
 
   const sentenceRecallTranslationEl = document.getElementById("sentence-recall-translation");
   const sentenceRecallFieldEl = document.getElementById("sentence-recall-field");
@@ -536,7 +538,20 @@
   const skipSentenceButton = document.getElementById("skip-sentence-button");
   const gotItButton = document.getElementById("got-it-button");
   const notYetButton = document.getElementById("not-yet-button");
+  const comparisonNoteEl = document.getElementById("comparison-note");
   let sentenceRecallWord = null;
+  let lastComparison = null;
+
+  // One span per word; missing / extra words get a class (spec 022 FR-012).
+  const WORD_CLASSES = { same: "word", missing: "word word--missing", extra: "word word--extra" };
+
+  function renderWords(target, words) {
+    target.replaceChildren();
+    words.forEach((mark, i) => {
+      if (i > 0) target.append(" ");
+      target.append(el("span", WORD_CLASSES[mark.status] || "word", mark.word));
+    });
+  }
 
   function renderSentenceRecall(state) {
     const example = state.example || {};
@@ -545,7 +560,9 @@
     if (sentenceRecallWord !== state.position) {
       sentenceRecallWord = state.position;
       sentenceRecallInput.value = "";
+      lastComparison = null;
     }
+    renderVoice(state);
     sentenceRecallTranslationEl.textContent = example.translation || "";
     sentenceRecallFieldEl.hidden = revealed;
     sentenceRecallCheckEl.hidden = !revealed;
@@ -555,9 +572,17 @@
     notYetButton.hidden = !revealed;
     if (revealed) {
       const attempt = sentenceRecallInput.value.trim();
-      sentenceRecallAttemptEl.textContent = attempt;
+      const comparison = state.comparison !== undefined ? state.comparison : lastComparison;
+      lastComparison = comparison;
+      if (comparison) {
+        renderWords(sentenceRecallAttemptEl, comparison.attempt);
+        renderWords(sentenceRecallSentenceEl, comparison.sentence);
+      } else {
+        sentenceRecallAttemptEl.textContent = attempt;
+        sentenceRecallSentenceEl.textContent = example.sentence || "";
+      }
       sentenceRecallAttemptRowEl.hidden = attempt === "";
-      sentenceRecallSentenceEl.textContent = example.sentence || "";
+      comparisonNoteEl.hidden = !comparison;
       gotItButton.focus();
     } else {
       sentenceRecallInput.focus();
@@ -568,7 +593,9 @@
     if (busy) return;
     busy = true;
     try {
-      const resp = await postJson("/api/sentence-recall", { mark });
+      const body =
+        mark === "reveal" ? { mark, attempt: sentenceRecallInput.value.trim() } : { mark };
+      const resp = await postJson("/api/sentence-recall", body);
       if (!resp) return;
       const data = await resp.json();
       if (!resp.ok) {
@@ -593,6 +620,172 @@
       event.preventDefault();
       sendSentenceRecall("reveal");
     }
+  });
+
+  // --- voice in sentence recall (spec 022) ---------------------------------
+  // Speak records a clip (at most 30 s) and sends it to /api/transcribe,
+  // which turns it into text on this Mac; the text is added to the attempt
+  // box for the learner to fix. Nothing is revealed or marked from here,
+  // and nothing about the recording is kept (contracts/voice-input.md).
+
+  const speakButton = document.getElementById("speak-button");
+  const speakLabelEl = document.getElementById("speak-label");
+  const voiceStatusEl = document.getElementById("voice-status");
+  const voiceStatusDotEl = document.getElementById("voice-status-dot");
+  const voiceStatusTextEl = document.getElementById("voice-status-text");
+  const voiceTimeEl = document.getElementById("voice-time");
+  const voiceHintEl = document.getElementById("voice-hint");
+  const voiceNoteEl = document.getElementById("voice-note");
+  const MAX_RECORDING_MS = 30 * 1000;
+  const VOICE_NOTES = {
+    insecure: "Voice needs this page on the Mac itself (or over https).",
+    blocked: "The microphone is blocked. Allow it in the browser, or type instead.",
+    nothing_heard: "Didn't catch that. Try again, or type it.",
+    unavailable: "Voice isn't working right now. Type it instead.",
+  };
+
+  let recorder = null;
+  let recordingTimer = null;
+  let recordingLimit = null;
+  let transcribing = false;
+  // Bumped whenever the step moves on, so a late recording or reply is dropped.
+  let voiceRound = 0;
+
+  function canRecord() {
+    return Boolean(window.isSecureContext && navigator.mediaDevices?.getUserMedia && window.MediaRecorder);
+  }
+
+  function showVoiceNote(key) {
+    voiceNoteEl.textContent = key ? VOICE_NOTES[key] : "";
+    voiceNoteEl.hidden = !key;
+  }
+
+  function showVoiceStatus(text, recording) {
+    voiceStatusEl.hidden = text === null;
+    voiceStatusTextEl.textContent = text || "";
+    voiceStatusDotEl.classList.toggle("status-dot--recording", Boolean(recording));
+    voiceTimeEl.textContent = "";
+  }
+
+  function setRecordingUi(recording) {
+    speakLabelEl.textContent = recording ? "Stop" : "Speak";
+    speakButton.classList.toggle("is-recording", recording);
+    clearInterval(recordingTimer);
+    clearTimeout(recordingLimit);
+    if (recording) {
+      showVoiceStatus("Listening…", true);
+      const startedAt = Date.now();
+      voiceTimeEl.textContent = "0:00";
+      recordingTimer = setInterval(() => {
+        const secs = Math.floor((Date.now() - startedAt) / 1000);
+        voiceTimeEl.textContent = `0:${String(secs).padStart(2, "0")}`;
+      }, 1000);
+      recordingLimit = setTimeout(() => stopRecording(false), MAX_RECORDING_MS);
+    }
+  }
+
+  function stopRecording(discard) {
+    if (!recorder || recorder.state !== "recording") return;
+    recorder.discard = discard;
+    recorder.stop();
+  }
+
+  // Called whenever the page leaves the unrevealed sentence-recall step.
+  function cancelVoice() {
+    voiceRound += 1;
+    stopRecording(true);
+    transcribing = false;
+    speakButton.disabled = false;
+    showVoiceStatus(null);
+    voiceHintEl.hidden = true;
+  }
+
+  function renderVoice(state) {
+    const offered = Boolean(state.voice_available) && !state.sentence_revealed;
+    if (!offered) {
+      cancelVoice();
+      speakButton.hidden = true;
+      showVoiceNote(null);
+      return;
+    }
+    speakButton.hidden = !canRecord();
+    if (speakButton.hidden) showVoiceNote("insecure");
+  }
+
+  function addHeardText(text) {
+    const typed = sentenceRecallInput.value.trim();
+    sentenceRecallInput.value = typed ? `${sentenceRecallInput.value.trimEnd()} ${text}` : text;
+    voiceHintEl.hidden = false;
+    sentenceRecallInput.focus();
+  }
+
+  async function sendRecording(blob, round) {
+    transcribing = true;
+    speakButton.disabled = true;
+    showVoiceStatus("Turning speech into text…", false);
+    let outcome = "unavailable";
+    let text = null;
+    try {
+      const resp = await api("/api/transcribe", {
+        method: "POST",
+        headers: { "Content-Type": blob.type || "audio/webm" },
+        body: blob,
+      });
+      if (!resp) return;
+      if (resp.ok) ({ outcome, text } = await resp.json());
+    } catch {
+      outcome = "unavailable";
+    } finally {
+      if (round === voiceRound) {
+        transcribing = false;
+        speakButton.disabled = false;
+        showVoiceStatus(null);
+      }
+    }
+    if (round !== voiceRound) return; // the step moved on: drop it
+    if (outcome === "ok" && text) addHeardText(text);
+    else showVoiceNote(outcome === "nothing_heard" ? "nothing_heard" : "unavailable");
+  }
+
+  async function startRecording() {
+    showVoiceNote(null);
+    const round = voiceRound;
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch {
+      showVoiceNote("blocked");
+      return;
+    }
+    if (round !== voiceRound) {
+      stream.getTracks().forEach((track) => track.stop());
+      return;
+    }
+    const preferredTypes = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4", "audio/ogg;codecs=opus"];
+    const mimeType = preferredTypes.find((type) => MediaRecorder.isTypeSupported(type));
+    const rec = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+    const chunks = [];
+    rec.discard = false;
+    rec.addEventListener("dataavailable", (event) => {
+      if (event.data.size > 0) chunks.push(event.data);
+    });
+    rec.addEventListener("stop", () => {
+      stream.getTracks().forEach((track) => track.stop());
+      if (recorder === rec) recorder = null;
+      setRecordingUi(false);
+      showVoiceStatus(null);
+      if (rec.discard || round !== voiceRound) return;
+      sendRecording(new Blob(chunks, { type: rec.mimeType || "audio/webm" }), round);
+    });
+    recorder = rec;
+    rec.start();
+    setRecordingUi(true);
+  }
+
+  speakButton.addEventListener("click", () => {
+    if (transcribing) return;
+    if (recorder && recorder.state === "recording") stopRecording(false);
+    else startRecording();
   });
 
   // --- word-list upload (spec 016) ----------------------------------------

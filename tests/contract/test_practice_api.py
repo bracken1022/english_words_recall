@@ -126,7 +126,8 @@ def test_new_example_wrong_step(tmp_path, ollama):
     assert client.post("/api/example/new").status_code == 409
 
 
-@pytest.mark.parametrize("route", ["/api/sentence", "/api/skip", "/api/retry-sentence", "/api/transcribe"])
+# /api/transcribe came back in spec 022 (voice in sentence recall).
+@pytest.mark.parametrize("route", ["/api/sentence", "/api/skip", "/api/retry-sentence"])
 def test_removed_routes(tmp_path, ollama, route):
     assert _client(_app(tmp_path)).post(route, json={}).status_code == 404
 
@@ -192,3 +193,44 @@ def test_sentence_recall_bad_mark(tmp_path, ollama, body):
     resp = client.post("/api/sentence-recall", json=body)
     assert resp.status_code == 400
     assert client.get("/api/state").get_json()["step"] == "sentence-recall"
+
+
+# --- spec 022: the app starts without voice ---------------------------------------
+
+
+def test_app_starts_without_the_voice_extra(tmp_path, ollama, monkeypatch):
+    import sys
+
+    from src.services import speech_client
+
+    monkeypatch.setitem(sys.modules, "faster_whisper", None)
+    app = _app(tmp_path)
+    assert _client(app).get("/api/state").status_code == 200
+    assert speech_client.is_available() is False
+
+
+def test_app_starts_when_preloading_fails(tmp_path, ollama, monkeypatch):
+    from src.services import speech_client
+
+    calls = []
+
+    def broken():
+        calls.append(1)
+        raise OSError("model download failed")
+
+    monkeypatch.setattr(speech_client, "is_available", lambda: True)
+    monkeypatch.setattr(speech_client, "_get_model", broken)
+    vocab = tmp_path / "vocab"
+    vocab.mkdir()
+    (vocab / "unit1.md").write_text(VOCAB, encoding="utf-8")
+    app = create_app(
+        vocab_dir=vocab,
+        progress_file=tmp_path / "p.md",
+        offer_choice=True,
+        accounts=[Account("lily", "pw", "Lily", tmp_path / "pl.md")],
+        word_lists_dir=tmp_path / "wl",
+        preload_voice=True,
+    )
+    speech_client.preload()  # what the startup thread runs: must not raise
+    assert _client(app).get("/api/state").status_code == 200
+    assert calls

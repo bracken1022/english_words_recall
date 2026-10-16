@@ -20,6 +20,7 @@ class SessionRegistry:
         mode: str,
         word_lists: WordListStore | None = None,
         example_service=None,
+        voice_available: bool = False,
     ):
         self._vocab_dir = vocab_dir
         self._group = group
@@ -28,6 +29,7 @@ class SessionRegistry:
         self._mode = mode
         self._word_lists = word_lists
         self._examples = example_service
+        self._voice_available = voice_available
         self._sessions: dict[str, PracticeSession] = {}
         self._lock = threading.Lock()
 
@@ -63,6 +65,7 @@ class SessionRegistry:
             mode=self._mode,
             item_filter=self._item_filter(account),
             example_service=self._examples.bind(account) if self._examples else None,
+            voice_available=self._voice_available,
         )
 
     def get(self, account: Account) -> PracticeSession:

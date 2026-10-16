@@ -12,6 +12,7 @@ import random
 from datetime import UTC, datetime
 from pathlib import Path
 
+from src.lib.word_diff import AttemptComparison, compare
 from src.models.practice_attempt import PracticeAttempt
 from src.services.matcher import grade_answer
 from src.services.progress_log import append_attempt
@@ -46,6 +47,7 @@ class PracticeSession:
         mode: str = DEFAULT_MODE,
         item_filter=None,
         example_service=None,
+        voice_available: bool = False,
     ):
         """*offer_choice* opts into the interactive collection-choice step
         (spec 007); without it the session starts straight away on every
@@ -56,7 +58,9 @@ class PracticeSession:
 
         *item_filter* (spec 020) drops words this learner removed from the
         shared sets; *example_service* (spec 021) makes and keeps example
-        sentences — None means no examples are offered.
+        sentences — None means no examples are offered. *voice_available*
+        (spec 022) says whether speech-to-text is installed, for the
+        sentence-recall Speak button.
         """
         self.progress_file = progress_file
         self.vocab_dir = vocab_dir
@@ -68,6 +72,7 @@ class PracticeSession:
         self.example_service = example_service
         self.pending_undo: dict | None = None
         self.sentence_revealed = False
+        self.voice_available = voice_available
 
         items, warnings = self._load(vocab_dir)
         self.warnings = warnings
@@ -211,10 +216,21 @@ class PracticeSession:
             return
         self._record_and_advance()
 
-    def sentence_recall_action(self, mark: str) -> None:
+    def can_transcribe(self) -> bool:
+        """Voice is only for recalling a sentence, before it is shown
+        (spec 022, FR-001)."""
+        return self.step == "sentence-recall" and not self.sentence_revealed
+
+    def sentence_recall_action(
+        self, mark: str, attempt: str | None = None
+    ) -> AttemptComparison | None:
         """The learner's self-check of the example sentence (spec 021 US2):
         "reveal" shows the sentence; "got" / "not_yet" record the attempt
-        with that mark and move on; "skip" records it without a mark."""
+        with that mark and move on; "skip" records it without a mark.
+
+        On "reveal", the learner's *attempt* (typed or spoken) is compared
+        with the sentence and the comparison returned (spec 022, FR-012).
+        The attempt itself is never kept, and other marks ignore it."""
         if mark not in SENTENCE_RECALL_MARKS:
             raise ValueError(f"unknown mark {mark!r}")
         self.pending_undo = None
@@ -222,10 +238,14 @@ class PracticeSession:
             raise WrongStepError("not recalling a sentence")
         if mark == "reveal":
             self.sentence_revealed = True
-            return
+            example = self.example_service.get(self.current_item) if self.example_service else None
+            if not attempt or not example:
+                return None
+            return compare(attempt, example["sentence"])
         if mark != "skip":
             self.pending_attempt["sentence_recall"] = mark
         self._record_and_advance()
+        return None
 
     def renew_example(self) -> dict:
         """Replace the current word's example with a new one (spec 021).
@@ -366,5 +386,6 @@ class PracticeSession:
             base.update(self._example_fields(item))
         if self.step == "sentence-recall":
             base["sentence_revealed"] = self.sentence_revealed
+            base["voice_available"] = self.voice_available
 
         return base

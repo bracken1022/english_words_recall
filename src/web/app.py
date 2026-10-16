@@ -4,6 +4,7 @@ one shared PracticeSession per running server process (see research.md
 login and acts on that account's own PracticeSession and progress file."""
 
 import secrets
+import threading
 from datetime import timedelta
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from flask import session as login_session
 
 from src.models.account import Account
 from src.models.vocabulary_item import VocabularyItem, VocabularyItemError
+from src.services import speech_client
 from src.services.accounts import authenticate
 from src.services.enrichment import (
     EnrichmentRunner,
@@ -38,6 +40,10 @@ from src.web.session_state import (
 
 MAX_UPLOAD_BYTES = 1024 * 1024
 MAX_SKIP_MESSAGES = 20
+# Spec 022: a 30-second recording is about 100-250 KB; 1 MB is plenty.
+MAX_RECORDING_BYTES = 1024 * 1024
+MAX_ATTEMPT_CHARS = 1000
+RECORDING_TOO_LONG = "The recording is too long."
 IMPORT_NO_WORDS = (
     "No words found. Put one English word per line — or upload a .md vocabulary file."
 )
@@ -54,12 +60,15 @@ def create_app(
     mode: str = "example",
     accounts: list[Account] | None = None,
     word_lists_dir: Path | None = None,
+    preload_voice: bool = False,
 ) -> Flask:
     """*accounts* None keeps the original no-login, single-session web UI
     (only the pre-spec-015 tests rely on it); `python -m src.web` always
     passes the loaded account list (research.md R8). *word_lists_dir*
     (spec 016) enables per-account uploaded word lists; None means no
-    uploads and every account practices from *vocab_dir*."""
+    uploads and every account practices from *vocab_dir*. *preload_voice*
+    (spec 022) loads the speech model in the background at startup, so
+    the first recording is quick; tests never do."""
     app = Flask(__name__)
     app.config["OLLAMA_URL"] = ollama_url
     app.config["MODEL"] = model
@@ -70,6 +79,10 @@ def create_app(
     )
     # Spec 021: example sentences, made on first practice and then kept.
     app.example_service = ExampleService(store, ollama_url, model)
+    # Spec 022: voice in sentence recall, when the optional extra is there.
+    voice_available = speech_client.is_available()
+    if voice_available and preload_voice:
+        threading.Thread(target=speech_client.preload, daemon=True).start()
     if accounts is None:
         app.practice_session = PracticeSession(
             vocab_dir=vocab_dir,
@@ -79,6 +92,7 @@ def create_app(
             order=order,
             mode=mode,
             example_service=app.example_service.bind(None),
+            voice_available=voice_available,
         )
     else:
         # A fresh key per process: restarting the server logs everyone out.
@@ -97,6 +111,7 @@ def create_app(
             mode=mode,
             word_lists=store,
             example_service=app.example_service,
+            voice_available=voice_available,
         )
 
         @app.before_request
@@ -153,6 +168,8 @@ def create_app(
 
         @app.errorhandler(413)
         def too_large(_exc):
+            if request.path == "/api/transcribe":
+                return jsonify({"error": RECORDING_TOO_LONG}), 413
             return jsonify({"error": "The file is larger than 1 MB."}), 413
 
         @app.get("/api/word-lists")
@@ -467,11 +484,38 @@ def create_app(
         mark = body.get("mark")
         if mark not in SENTENCE_RECALL_MARKS:
             return jsonify({"error": "mark must be reveal, got, not_yet or skip"}), 400
+        attempt = body.get("attempt")
+        if attempt is not None and (
+            not isinstance(attempt, str) or len(attempt) > MAX_ATTEMPT_CHARS
+        ):
+            return jsonify({"error": "attempt must be text of at most 1000 characters"}), 400
         try:
-            _current_session().sentence_recall_action(mark)
+            comparison = _current_session().sentence_recall_action(mark, attempt=attempt)
         except WrongStepError:
             return jsonify({"error": "Not recalling a sentence."}), 409
-        return jsonify(_current_session().state())
+        state = _current_session().state()
+        if mark == "reveal":
+            # Spec 022 (FR-012): shown once with the reveal; the attempt
+            # itself is dropped here, never stored or logged.
+            state["comparison"] = comparison.to_json() if comparison else None
+        return jsonify(state)
+
+    @app.post("/api/transcribe")
+    def post_transcribe():
+        """Spec 022: speech to text for sentence recall only. The audio is
+        read into memory, transcribed locally and dropped; neither it nor
+        the text is logged or stored (FR-004, FR-005)."""
+        if not _current_session().can_transcribe():
+            return jsonify({"error": "Voice is only for recalling a sentence."}), 409
+        if (request.content_length or 0) > MAX_RECORDING_BYTES:
+            return jsonify({"error": RECORDING_TOO_LONG}), 413
+        audio = request.get_data(cache=False)
+        if len(audio) > MAX_RECORDING_BYTES:
+            return jsonify({"error": RECORDING_TOO_LONG}), 413
+        if not audio:
+            return jsonify({"error": "No recording received."}), 400
+        result = speech_client.transcribe(audio)
+        return jsonify({"outcome": result.outcome, "text": result.text})
 
     @app.post("/api/continue")
     def post_continue():

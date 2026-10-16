@@ -15,3 +15,15 @@ def _no_real_model(monkeypatch):
         raise requests.ConnectionError("no model in tests")
 
     monkeypatch.setattr("src.services.llm_client.requests.post", unreachable)
+
+
+@pytest.fixture(autouse=True)
+def _no_real_speech_model(monkeypatch):
+    """Spec 022: no test may load a real Whisper model. A test that fakes
+    the recogniser patches speech_client._get_model itself, which
+    overrides this."""
+
+    def no_model():
+        raise RuntimeError("no speech model in tests")
+
+    monkeypatch.setattr("src.services.speech_client._get_model", no_model)
