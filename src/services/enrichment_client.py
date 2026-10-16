@@ -1,8 +1,8 @@
 """Local-model enrichment of one uploaded word (spec 018,
 contracts/enrichment-llm-contract.md).
 
-request_enrichment() asks the same local Ollama model used for sentence
-review for a word's concise Chinese meaning and spelling variants;
+request_enrichment() asks the same local Ollama model used for example
+sentences for a word's concise Chinese meaning and spelling variants;
 request_pos() then asks, separately, for its parts of speech (spec 019). (Its
 IPA proved unreliable — eval-report.md — so pronunciations come from the
 offline dictionary in src/lib/us_pronunciation.py instead.) The reply is

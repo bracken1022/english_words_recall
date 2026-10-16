@@ -16,8 +16,7 @@ def _post_chat(base_url: str, payload: dict, timeout: float) -> tuple[str | None
     """POST *payload* to the local chat API and return (content, failure).
     On success failure is None; otherwise content is None and failure is
     "unavailable" (can't connect, or 404 — model not pulled), "timeout",
-    "bad_status", "bad_body" or "error". Spec 018's enrichment needs this
-    distinction; sentence review uses _post_json, which collapses it."""
+    "bad_status", "bad_body" or "error"."""
     try:
         response = requests.post(f"{base_url}/api/chat", json=payload, timeout=timeout)
     except requests.ConnectionError:
@@ -41,22 +40,13 @@ def _post_chat(base_url: str, payload: dict, timeout: float) -> tuple[str | None
     return content, None
 
 
-def _post_json(base_url: str, payload: dict, timeout: float) -> str | None:
-    """Shared request plumbing for both roles: POST *payload*, return the
-    reply's message content string, or None on any failure (connection
-    error, non-200 status, or a response missing that field) — the caller
-    treats that identically to an unavailable LLM (FR-010)."""
-    content, _failure = _post_chat(base_url, payload, timeout)
-    return content
-
-
 def _parse_object_reply(
     content: str,
     required_fields: tuple[str, ...],
     bool_fields: tuple[str, ...] = (),
     str_fields: tuple[str, ...] = (),
 ) -> dict | None:
-    """Generic structured-reply parser shared by both roles: valid JSON
+    """Generic structured-reply parser shared by enrichment and examples: valid JSON
     object, all required_fields present, bool_fields/str_fields correctly
     typed. Returns the parsed dict, or None if anything doesn't hold."""
     try:
