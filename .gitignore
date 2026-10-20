@@ -33,3 +33,6 @@ htmlcov/
 
 # Design workflow screenshots (spec 014)
 /design/verification/
+
+# Local secrets (e.g. DASHSCOPE_API_KEY)
+.env

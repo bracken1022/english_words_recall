@@ -18,6 +18,13 @@ def _no_real_model(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_qwen_config(monkeypatch):
+    """No test may pick up a real Qwen key or endpoint from the shell."""
+    for name in ("DASHSCOPE_API_KEY", "QWEN_BASE_URL", "QWEN_MODEL"):
+        monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _no_real_speech_model(monkeypatch):
     """Spec 022: no test may load a real Whisper model. A test that fakes
     the recogniser patches speech_client._get_model itself, which
