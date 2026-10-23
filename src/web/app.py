@@ -15,6 +15,12 @@ from src.models.account import Account
 from src.models.vocabulary_item import VocabularyItem, VocabularyItemError
 from src.services import speech_client
 from src.services.accounts import authenticate
+from src.services.corrections import (
+    AlreadyUndone,
+    CorrectionNotFound,
+    CorrectionService,
+    WordChanged,
+)
 from src.services.enrichment import (
     EnrichmentRunner,
     PendingImportStore,
@@ -23,6 +29,7 @@ from src.services.enrichment import (
 )
 from src.services.enrichment_client import request_pos
 from src.services.examples import ExampleService, ExampleUnavailable
+from src.services.qwen_client import QwenConfig
 from src.services.word_lists import (
     ListExistsError,
     UploadFormatError,
@@ -61,6 +68,7 @@ def create_app(
     accounts: list[Account] | None = None,
     word_lists_dir: Path | None = None,
     preload_voice: bool = False,
+    correction_check=None,
 ) -> Flask:
     """*accounts* None keeps the original no-login, single-session web UI
     (only the pre-spec-015 tests rely on it); `python -m src.web` always
@@ -68,7 +76,9 @@ def create_app(
     (spec 016) enables per-account uploaded word lists; None means no
     uploads and every account practices from *vocab_dir*. *preload_voice*
     (spec 022) loads the speech model in the background at startup, so
-    the first recording is quick; tests never do."""
+    the first recording is quick; tests never do. Word corrections (spec
+    023) run when DASHSCOPE_API_KEY is set; *correction_check* replaces
+    the Qwen call (tests)."""
     app = Flask(__name__)
     app.config["OLLAMA_URL"] = ollama_url
     app.config["MODEL"] = model
@@ -79,6 +89,11 @@ def create_app(
     )
     # Spec 021: example sentences, made on first practice and then kept.
     app.example_service = ExampleService(store, ollama_url, model)
+    # Spec 023: Qwen checks each word once; without a key it only lists
+    # and undoes earlier corrections.
+    app.correction_service = CorrectionService(
+        store, QwenConfig.from_env(), shared_dir=vocab_dir, check=correction_check
+    )
     # Spec 022: voice in sentence recall, when the optional extra is there.
     voice_available = speech_client.is_available()
     if voice_available and preload_voice:
@@ -93,6 +108,7 @@ def create_app(
             mode=mode,
             example_service=app.example_service.bind(None),
             voice_available=voice_available,
+            correction_service=app.correction_service.bind(None),
         )
     else:
         # A fresh key per process: restarting the server logs everyone out.
@@ -112,6 +128,7 @@ def create_app(
             word_lists=store,
             example_service=app.example_service,
             voice_available=voice_available,
+            correction_service=app.correction_service,
         )
 
         @app.before_request
@@ -371,11 +388,12 @@ def create_app(
                 )
                 if own:
                     try:
-                        return ("own", store.remove_word(account, source, item.english, item.chinese))
+                        return ("own", store.remove_word(account, source, item.english, item.origin_chinese))
                     except KeyError:
                         return None  # already gone (e.g. another device)
-                store.hide_shared(account, item.group, item.english, item.chinese)
-                return ("shared", (item.group, item.english, item.chinese))
+                # The file meaning: a shared correction may have changed chinese.
+                store.hide_shared(account, item.group, item.english, item.origin_chinese)
+                return ("shared", (item.group, item.english, item.origin_chinese))
 
             return remove
 
@@ -425,6 +443,42 @@ def create_app(
     @app.get("/api/state")
     def get_state():
         return jsonify(_state_json())
+
+    def _corrections_view():
+        return app.correction_service.bind(_current_account() if accounts is not None else None)
+
+    @app.get("/api/corrections")
+    def get_corrections():
+        view = _corrections_view()
+        return jsonify(
+            {
+                "enabled": app.correction_service.enabled,
+                "paused": view.paused(),
+                "corrections": view.list(),
+            }
+        )
+
+    @app.post("/api/corrections/undo")
+    def post_undo_correction():
+        body = request.get_json(silent=True)
+        record_id = body.get("id") if isinstance(body, dict) else None
+        if not isinstance(record_id, str) or not record_id:
+            return jsonify({"error": "id is required"}), 400
+        session = _current_session()
+        # The word on screen shows the old values at once.
+        on_word = session.step in ("recall", "reveal", "sentence-recall")
+        live = [session.current_item] if on_word else []
+        try:
+            undone = _corrections_view().undo(record_id, live_items=live)
+        except CorrectionNotFound:
+            return jsonify({"error": "That correction wasn't found."}), 404
+        except AlreadyUndone:
+            return jsonify({"error": "That correction was already undone."}), 409
+        except WordChanged:
+            return jsonify({"error": "That word has changed since, so it can't be undone."}), 409
+        except OSError:
+            return jsonify({"error": "Couldn't undo the correction; nothing was changed."}), 500
+        return jsonify({"undone": undone})
 
     @app.post("/api/answer")
     def post_answer():

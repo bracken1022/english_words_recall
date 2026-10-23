@@ -33,7 +33,7 @@ def _same_sentence(a: str, b: str) -> bool:
 
 
 def _json_key(item: VocabularyItem) -> str:
-    return f"{item.group or ''}|{item.english}|{item.chinese}"
+    return f"{item.group or ''}|{item.english}|{item.origin_chinese}"
 
 
 class ExampleService:
@@ -156,7 +156,7 @@ class ExampleService:
         if self._own(account, item):
             try:
                 self.word_lists.set_example(
-                    account, item.source, item.english, item.chinese,
+                    account, item.source, item.english, item.origin_chinese,
                     example["sentence"], example["translation"],
                 )  # fmt: skip
             except (KeyError, OSError):

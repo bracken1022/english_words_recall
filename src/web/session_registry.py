@@ -21,6 +21,7 @@ class SessionRegistry:
         word_lists: WordListStore | None = None,
         example_service=None,
         voice_available: bool = False,
+        correction_service=None,
     ):
         self._vocab_dir = vocab_dir
         self._group = group
@@ -29,6 +30,7 @@ class SessionRegistry:
         self._mode = mode
         self._word_lists = word_lists
         self._examples = example_service
+        self._corrections = correction_service
         self._voice_available = voice_available
         self._sessions: dict[str, PracticeSession] = {}
         self._lock = threading.Lock()
@@ -51,7 +53,8 @@ class SessionRegistry:
             if store.word_source(account) == "own":
                 return items
             hidden = store.hidden_shared(account)
-            return [i for i in items if (i.group, i.english, i.chinese) not in hidden]
+            # Keyed by the file meaning, which a shared correction never changes.
+            return [i for i in items if (i.group, i.english, i.origin_chinese) not in hidden]
 
         return keep_visible
 
@@ -66,6 +69,7 @@ class SessionRegistry:
             item_filter=self._item_filter(account),
             example_service=self._examples.bind(account) if self._examples else None,
             voice_available=self._voice_available,
+            correction_service=self._corrections.bind(account) if self._corrections else None,
         )
 
     def get(self, account: Account) -> PracticeSession:

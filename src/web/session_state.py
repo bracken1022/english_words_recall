@@ -48,6 +48,7 @@ class PracticeSession:
         item_filter=None,
         example_service=None,
         voice_available: bool = False,
+        correction_service=None,
     ):
         """*offer_choice* opts into the interactive collection-choice step
         (spec 007); without it the session starts straight away on every
@@ -60,7 +61,8 @@ class PracticeSession:
         shared sets; *example_service* (spec 021) makes and keeps example
         sentences — None means no examples are offered. *voice_available*
         (spec 022) says whether speech-to-text is installed, for the
-        sentence-recall Speak button.
+        sentence-recall Speak button. *correction_service* (spec 023) checks
+        each word with Qwen in the background the first time it comes up.
         """
         self.progress_file = progress_file
         self.vocab_dir = vocab_dir
@@ -70,6 +72,7 @@ class PracticeSession:
         self.correct_count = 0
         self.item_filter = item_filter
         self.example_service = example_service
+        self.correction_service = correction_service
         self.pending_undo: dict | None = None
         self.sentence_revealed = False
         self.voice_available = voice_available
@@ -106,9 +109,14 @@ class PracticeSession:
         return items, warnings
 
     def _word_started(self) -> None:
-        """A new word is up: start making its example in the background."""
-        if self.step == "recall" and not self.recall_only and self.example_service is not None:
+        """A new word is up: start making its example and, in every mode,
+        checking its values (spec 023) in the background."""
+        if self.step != "recall":
+            return
+        if not self.recall_only and self.example_service is not None:
             self.example_service.prepare(self.current_item)
+        if self.correction_service is not None:
+            self.correction_service.prepare(self.current_item)
 
     @property
     def current_item(self):
@@ -384,6 +392,10 @@ class PracticeSession:
             base["answer"] = self.pending_attempt["answer"]
             base["correct"] = self.pending_attempt["correct"]
             base.update(self._example_fields(item))
+            # Fields a check corrected while the learner answered (spec 023).
+            base["corrected"] = (
+                self.correction_service.corrected_fields(item) if self.correction_service else []
+            )
         if self.step == "sentence-recall":
             base["sentence_revealed"] = self.sentence_revealed
             base["voice_available"] = self.voice_available

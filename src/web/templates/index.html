@@ -15,6 +15,7 @@
     <span class="nav-brand">English Tutor</span>
     <button id="end-session-button" type="button" class="btn btn-ghost" hidden>End session</button>
     <span id="account-name" class="account-name text-muted" hidden></span>
+    <button id="open-corrections" type="button" class="btn btn-ghost" aria-label="Corrections" hidden><i class="ph-duotone ph-list-checks" aria-hidden="true"></i><span class="nav-label">Corrections</span></button>
     <button id="logout-button" type="button" class="btn btn-ghost" hidden>Log out</button>
   </header>
 
@@ -148,6 +149,16 @@
       <button id="new-example-button" type="button" class="btn btn-ghost" hidden>New example</button>
     </div>
     <div id="remove-toast" class="remove-toast" role="status" hidden><span id="remove-toast-text"></span> <button id="undo-remove-button" type="button" class="btn btn-ghost">Undo</button></div>
+
+    <section id="corrections-view" class="screen corrections-view" hidden>
+      <div class="corrections-head">
+        <h1 class="corrections-title">Corrections</h1>
+        <button id="close-corrections" type="button" class="btn btn-secondary">Back to practice</button>
+      </div>
+      <p class="option-hint">Pronunciations, meanings and parts of speech fixed automatically the first time a word comes up. Undo any you disagree with.</p>
+      <p id="corrections-status" class="corrections-status" role="status" hidden></p>
+      <ul id="corrections-list" class="corrections-list"></ul>
+    </section>
 
     <section id="complete-view" class="screen" hidden>
       <div class="score-row">

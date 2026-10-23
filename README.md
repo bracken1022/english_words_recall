@@ -443,6 +443,60 @@ a `sentences.yml` mapping file name to sentence):
 .venv/bin/python -m src.tools.eval_voice backups/voice-022-eval
 ```
 
+### Word corrections (web UI)
+
+The first time a word comes up in practice, the tutor asks Qwen (an online
+model) to check its pronunciation, Chinese meaning and parts of speech,
+in the background while you answer. A correction is saved straight away:
+you see it when the answer is shown (marked **Updated**), or the next time
+the word comes up. The English word, its spellings and its example are
+never changed.
+
+- **Only word data is sent**: the English word, its current IPA, meaning,
+  parts of speech, and whether the list uses British or American IPA. No
+  account, list name, progress, examples or recordings. The key stays on
+  the server.
+- **Checked once**: a word is sent again only after its entry is edited.
+  Practising unchanged words sends nothing.
+- **Kept in the list's style**: shared sets and lists copied from them use
+  British IPA, uploaded lists American. Words whose pronunciation depends
+  on the meaning (*record*, *present*) keep their IPA.
+- **Where corrections are saved**: for your own lists, in the list file;
+  for the shared word sets, in a hidden `vocabulary/.corrections.json`
+  that applies for everyone, so the shared files are never edited. Each
+  folder's `.corrections.json` also records every change and which words
+  were checked.
+- **Corrections** (the button in the header) lists each change as old →
+  new, newest first. **Undo** puts back the old values of that check, and
+  the change won't come back. Undoing a shared-set correction undoes it
+  for everyone.
+- If Qwen rejects the key, checks stop until the tutor restarts. If it
+  can't be reached or is busy, checks pause for 5 minutes. The reason
+  shows on the Corrections page; practice is never interrupted.
+
+To turn it on, set the key in the shell that starts the web UI:
+
+```bash
+export DASHSCOPE_API_KEY=sk-...
+# optional:
+export QWEN_BASE_URL=https://token-plan.maas.qianwenaiapi.com/compatible-mode/v1
+export QWEN_MODEL=qwen3.8-flash
+```
+
+The startup lines say `Corrections: on (qwen3.8-flash)` or
+`Corrections: off (set DASHSCOPE_API_KEY)`. Without a key everything else
+works as before, and earlier shared-set corrections still show.
+
+To measure correction quality on the reviewed 100-word set (50 known
+errors, 50 right words):
+
+```bash
+.venv/bin/python -m src.tools.eval_corrections tests/fixtures/word_check_cases.yml
+```
+
+It passes when at least 90% of the errors are fixed and at most 5% of the
+right words are made worse.
+
 ## Development
 
 ```bash

@@ -181,3 +181,86 @@ def test_pos_round_trips_in_key_order(tmp_path):
     (block,), _ = parse_blocks(text)
     assert list(block) == ["english", "ipa", "pos", "alternates", "chinese", "group"]
     assert VocabularyItem.from_block(block).pos == ["n.", "v."]
+
+
+# --- spec 023: set_values corrects ipa, chinese and pos in one block ---------
+
+_LIST = (
+    "---\nenglish: tailor\nipa: ˈteɪlə\npos: [v.]\nalternates: [taylor]\nchinese: 裁缝\n"
+    "group: unit1\nexample: 'The tailor said: no #1.'\nexample_zh: 裁缝说不。\n---\n\n"
+    "---\nenglish: plain\nalternates: []\nchinese: 普通\ngroup: unit1\n---\n"
+)
+
+
+def _values(ipa, chinese, pos):
+    from src.services.corrections_file import WordValues
+
+    return WordValues.normal(ipa, chinese, pos)
+
+
+def _list_file(tmp_path: Path) -> Path:
+    path = tmp_path / "lily" / "unit1.md"
+    path.parent.mkdir(parents=True)
+    path.write_text(_LIST, encoding="utf-8")
+    return path
+
+
+def test_set_values_changes_only_the_three_fields(tmp_path: Path):
+    store = WordListStore(tmp_path)
+    path = _list_file(tmp_path)
+    old = _values("ˈteɪlə", "裁缝", ["v."])
+    new = _values("ˈteɪlə", "裁缝；定做: 衣服 #2", ["n.", "v."])
+    assert store.set_values(LILY, path, "tailor", old, new) is True
+    text = path.read_text(encoding="utf-8")
+    assert text == _LIST.replace("pos: [v.]", "pos: [n., v.]").replace(
+        "chinese: 裁缝\n", "chinese: '裁缝；定做: 衣服 #2'\n"
+    )
+    items, warnings = load_vocabulary(path.parent)
+    assert warnings == []
+    assert (items[0].chinese, items[0].pos, items[0].alternates) == (
+        "裁缝；定做: 衣服 #2",
+        ["n.", "v."],
+        ["taylor"],
+    )
+    assert items[0].example == "The tailor said: no #1."
+
+
+def test_set_values_adds_missing_ipa_and_pos_after_english(tmp_path: Path):
+    store = WordListStore(tmp_path)
+    path = _list_file(tmp_path)
+    old = _values(None, "普通", [])
+    new = _values("pleɪn", "普通的；平原", ["adj.", "n."])
+    assert store.set_values(LILY, path, "plain", old, new) is True
+    text = path.read_text(encoding="utf-8")
+    assert (
+        "english: plain\nipa: pleɪn\npos: [adj., n.]\nalternates: []\nchinese: 普通的；平原\n"
+        in text
+    )
+    assert text.startswith(_LIST.split("\n\n")[0])
+
+
+def test_set_values_refuses_when_the_block_changed(tmp_path: Path):
+    store = WordListStore(tmp_path)
+    path = _list_file(tmp_path)
+    stale = _values("ˈteɪlə", "裁缝；旧的", ["v."])
+    assert store.set_values(LILY, path, "tailor", stale, _values("ˈteɪlə", "x", ["n."])) is False
+    assert store.set_values(LILY, path, "gone", stale, _values("ˈteɪlə", "x", ["n."])) is False
+    assert path.read_text(encoding="utf-8") == _LIST
+
+
+def test_set_values_stays_in_the_accounts_folder(tmp_path: Path):
+    store = WordListStore(tmp_path)
+    other = tmp_path / "weibo" / "unit1.md"
+    other.parent.mkdir(parents=True)
+    other.write_text(_LIST, encoding="utf-8")
+    with pytest.raises(ValueError):
+        store.set_values(
+            LILY, other, "tailor", _values("ˈteɪlə", "裁缝", ["v."]), _values(None, "x", ["n."])
+        )
+
+
+def test_word_values_lists_every_block_of_a_word(tmp_path: Path):
+    store = WordListStore(tmp_path)
+    path = _list_file(tmp_path)
+    assert store.word_values(LILY, path, "tailor") == [_values("ˈteɪlə", "裁缝", ["v."])]
+    assert store.word_values(LILY, path, "gone") == []

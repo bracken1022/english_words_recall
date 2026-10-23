@@ -686,3 +686,37 @@ def test_voice_stops_when_the_step_moves_on():
     assert "cancelVoice()" in show_login
     render_state = js[js.index("function renderState") : js.index("function renderState") + 300]
     assert "cancelVoice()" in render_state
+
+
+# --- spec 023: word corrections ------------------------------------------------
+
+
+def test_corrections_view_markup():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    assert 'id="corrections-view"' in html
+    assert 'id="corrections-list"' in html
+    assert 'id="corrections-status"' in html
+    assert 'id="open-corrections"' in html
+
+
+def test_app_js_loads_and_renders_corrections():
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert "/api/corrections" in js
+    assert "Qwen is not set up" in js
+    assert "No corrections yet." in js
+
+
+def test_app_js_marks_corrected_fields_at_reveal():
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert "state.corrected" in js
+    assert "Updated" in js
+    css = CSS_PATH.read_text(encoding="utf-8")
+    assert ".updated-note" in css and ".corrections-list" in css
+
+
+def test_app_js_undoes_corrections():
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert "/api/corrections/undo" in js
+    assert "entry.can_undo" in js
+    assert '"Undo"' in js
+    assert '"Undone"' in js

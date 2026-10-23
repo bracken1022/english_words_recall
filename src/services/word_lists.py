@@ -23,6 +23,7 @@ from src.lib.markdown_blocks import _BLOCK_RE, parse_blocks
 from src.lib.pos import is_pos_field, normalize_pos
 from src.models.account import Account
 from src.models.vocabulary_item import VocabularyItem, VocabularyItemError
+from src.services.corrections_file import WordValues
 
 MAX_WORDS = 5000
 MAX_NAME_LENGTH = 64
@@ -331,6 +332,49 @@ def _updated_block(block: dict, fields: dict) -> dict:
     return updated
 
 
+def _replaced_values(block_text: str, values) -> str:
+    """*block_text* (from its opening to its closing ---) with the ipa,
+    chinese and pos keys set from *values* (spec 023): each replaced in
+    place on one line, a missing ipa or pos added right after english,
+    and every other line kept byte for byte."""
+    lines = block_text.split("\n")
+    opening, body, closing = lines[0], lines[1:-1], lines[-1]
+    # Top-level keys start at column 0; indented or "- " lines continue one.
+    segments: list[tuple[str | None, list[str]]] = []
+    for line in body:
+        starts_key = line[:1] not in (" ", "\t", "-", "#", "") and ":" in line
+        key = line.split(":", 1)[0] if starts_key else None
+        if key is not None or not segments:
+            segments.append((key, [line]))
+        else:
+            segments[-1][1].append(line)
+
+    def dumped(key: str, value) -> list[str]:
+        if key == "pos":
+            return [f"pos: [{', '.join(value)}]"]
+        text = yaml.safe_dump(
+            {key: value}, allow_unicode=True, default_flow_style=False, width=10_000
+        )
+        return text.rstrip("\n").split("\n")
+
+    wanted = {"ipa": values.ipa, "chinese": values.chinese, "pos": list(values.pos)}
+    present = {key for key, _ in segments}
+    out: list[str] = []
+    for key, seg_lines in segments:
+        if key in wanted:
+            if wanted[key]:
+                out.extend(dumped(key, wanted[key]))
+            continue
+        out.extend(seg_lines)
+        if key == "english":
+            for extra in ("ipa", "pos"):
+                if extra not in present and wanted[extra]:
+                    out.extend(dumped(extra, wanted[extra]))
+    if "chinese" not in present:
+        out.extend(dumped("chinese", wanted["chinese"]))
+    return "\n".join([opening, *out, closing])
+
+
 def _write_text(path: Path, text: str) -> None:
     with tempfile.NamedTemporaryFile(
         "w", encoding="utf-8", dir=path.parent, suffix=".tmp", delete=False, newline=""
@@ -535,6 +579,48 @@ class WordListStore:
             ).rstrip("\n")
             new_body = "\n".join([*kept, dumped, lines[-1]])
             _write_text(target, text[:start] + new_body + text[end:])
+
+    def word_values(self, account: Account, path: Path, english: str) -> list:
+        """The checked values (spec 023) of every block for *english* in one
+        of the account's lists, in file order."""
+        target = self._own_path(account, path)
+        try:
+            text = target.read_text(encoding="utf-8")
+        except OSError:
+            return []
+        blocks, _ = parse_blocks(text)
+        return [
+            WordValues.normal(b.get("ipa"), str(b.get("chinese", "")), b.get("pos") or [])
+            for b in blocks
+            if str(b.get("english", "")).strip() == english.strip()
+        ]
+
+    def set_values(self, account: Account, path: Path, english: str, old, new) -> bool:
+        """Replace a word's ipa, chinese and pos (spec 023) with *new*, but
+        only in a block for *english* whose values still equal *old*
+        (WordValues); False, writing nothing, when there is none. Every
+        other line of the block and the file stays the same."""
+        with self._lock(account):
+            target = self._own_path(account, path)
+            text = target.read_text(encoding="utf-8")
+            for match in _BLOCK_RE.finditer(text):
+                blocks, _ = parse_blocks(match.group(0))
+                if not blocks:
+                    continue
+                block = blocks[0]
+                if str(block.get("english", "")).strip() != english.strip():
+                    continue
+                current = WordValues.normal(
+                    block.get("ipa"), str(block.get("chinese", "")), block.get("pos") or []
+                )
+                if current != old:
+                    continue
+                start = match.start()
+                end = start + len(match.group(0).rstrip())
+                body = _replaced_values(text[start:end], new)
+                _write_text(target, text[:start] + body + text[end:])
+                return True
+            return False
 
     def _find_block(self, text: str, english: str, chinese: str):
         for match in _BLOCK_RE.finditer(text):

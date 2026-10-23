@@ -7,6 +7,7 @@ from pathlib import Path
 from src.services import speech_client
 from src.services.accounts import AccountsFileError, load_accounts
 from src.services.llm_client import DEFAULT_MODEL
+from src.services.qwen_client import QwenConfig
 from src.web.app import create_app
 
 
@@ -98,6 +99,10 @@ def main() -> None:
         print(f"Voice: on (local Whisper {args.speech_model}; open the page on this Mac to use it)")
     else:
         print("Voice: off (install with: pip install -e '.[voice]')")
+    if app.correction_service.enabled:
+        print(f"Corrections: on ({QwenConfig.from_env().model})")
+    else:
+        print("Corrections: off (set DASHSCOPE_API_KEY)")
     # Explicitly threaded so one account's slow sentence review never blocks
     # another account's requests (spec 015, research.md R3).
     app.run(host=args.host, port=args.port, threaded=True)

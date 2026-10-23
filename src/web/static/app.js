@@ -6,6 +6,7 @@
     "sentence-recall": document.getElementById("sentence-recall-view"),
     complete: document.getElementById("complete-view"),
     login: document.getElementById("login-view"),
+    corrections: document.getElementById("corrections-view"),
   };
   const chooseListEl = document.getElementById("choose-list");
   const modeHintEl = document.getElementById("mode-hint");
@@ -38,6 +39,10 @@
   const sessionTallyEl = document.getElementById("session-tally");
   const scoreEl = document.querySelector("#complete-view .score");
   const restartButton = document.getElementById("restart-button");
+  const openCorrectionsButton = document.getElementById("open-corrections");
+  const closeCorrectionsButton = document.getElementById("close-corrections");
+  const correctionsStatusEl = document.getElementById("corrections-status");
+  const correctionsListEl = document.getElementById("corrections-list");
 
   const MODE_HINTS = {
     "recall-only": "Recall the word only. Faster rounds.",
@@ -47,6 +52,7 @@
 
   let currentState = null;
   let busy = false;
+  let correctionsOpen = false;
 
   // --- small DOM helpers ---------------------------------------------------
 
@@ -129,6 +135,8 @@
     endSessionButton.hidden = true;
     accountNameEl.hidden = true;
     logoutButton.hidden = true;
+    openCorrectionsButton.hidden = true;
+    correctionsOpen = false;
     loginUsernameInput.focus();
   }
 
@@ -139,6 +147,8 @@
 
   function renderState(state) {
     currentState = state;
+    // The Corrections page stays up until closed; it then shows this state.
+    if (correctionsOpen) return;
     if (state.step !== "sentence-recall" || state.sentence_revealed) cancelVoice();
 
     showWarnings(state.warnings);
@@ -167,6 +177,7 @@
       accountNameEl.textContent = state.account.display_name || state.account.username;
       accountNameEl.hidden = false;
       logoutButton.hidden = false;
+      openCorrectionsButton.hidden = false;
     }
     wordFeedbackEl.hidden = true;
     setActions();
@@ -290,11 +301,130 @@
       }
       wordFeedbackEl.append(reveal);
     }
+    const updated = updatedNote(state.corrected);
+    if (updated) wordFeedbackEl.append(updated);
     wordFeedbackEl.hidden = false;
 
     const label = state.position === state.total ? "Finish" : "Next word →";
     setActions({ continueLabel: label });
   }
+
+  // --- word corrections (spec 023) ------------------------------------------
+
+  const FIELD_NAMES = { ipa: "pronunciation", chinese: "meaning", pos: "part of speech" };
+
+  // Fields a background check corrected while the learner answered.
+  function updatedNote(corrected) {
+    if (!corrected || corrected.length === 0) return null;
+    const note = el("p", "updated-note");
+    const names = corrected.map((field) => FIELD_NAMES[field] || field).join(", ");
+    note.append(icon("sparkle"), el("span", null, `Updated: ${names}`));
+    return note;
+  }
+
+  function correctionValue(field, value) {
+    if (value === null || value === undefined || value.length === 0) return "—";
+    if (field === "pos") return value.join(" ");
+    if (field === "ipa") return `/${value}/`;
+    return value;
+  }
+
+  function renderCorrections(data, keepStatus = false) {
+    let status = "";
+    if (!data.enabled) status = "Qwen is not set up, so words aren't being checked. Earlier corrections are listed below.";
+    else if (data.paused) {
+      const until = data.paused.until
+        ? ` Checks resume at ${new Date(data.paused.until).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}.`
+        : " Checks resume after the tutor restarts.";
+      status = `${data.paused.reason}${until}`;
+    }
+    if (!keepStatus) {
+      correctionsStatusEl.textContent = status;
+      correctionsStatusEl.hidden = !status;
+    }
+
+    correctionsListEl.replaceChildren();
+    if (data.corrections.length === 0) {
+      correctionsListEl.append(el("li", "corrections-empty text-muted", "No corrections yet."));
+      return;
+    }
+    for (const entry of data.corrections) {
+      const row = el("li", "correction-row");
+      if (entry.undone) row.classList.add("is-undone");
+      const head = el("div", "correction-head");
+      head.append(
+        el("span", "correction-word", entry.english),
+        el("span", "tag tag-neutral", FIELD_NAMES[entry.field] || entry.field),
+      );
+      const when = new Date(entry.at).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+      const source = entry.scope === "shared" ? "shared word sets" : entry.list;
+      head.append(el("span", "correction-meta text-muted", `${source} · ${when}`));
+      const actions = el("span", "correction-actions");
+      if (entry.undone) {
+        actions.append(el("span", "tag tag-neutral", "Undone"));
+      } else if (entry.can_undo) {
+        const undoButton = el("button", "btn btn-ghost", "Undo");
+        undoButton.type = "button";
+        undoButton.setAttribute("aria-label", `Undo the ${FIELD_NAMES[entry.field] || entry.field} change to ${entry.english}`);
+        undoButton.addEventListener("click", () => undoCorrection(entry.id, undoButton));
+        actions.append(undoButton);
+      }
+      head.append(actions);
+      const change = el("p", "correction-change");
+      const oldValue = el("span", "correction-old", correctionValue(entry.field, entry.old));
+      const arrow = el("span", "correction-arrow", "→");
+      arrow.setAttribute("aria-label", "changed to");
+      change.append(oldValue, arrow, el("span", "correction-new", correctionValue(entry.field, entry.new)));
+      if (entry.field === "chinese") change.lang = "zh-Hans";
+      row.append(head, change);
+      correctionsListEl.append(row);
+    }
+  }
+
+  // Undoes every field changed by that check of the word (its batch).
+  async function undoCorrection(id, button) {
+    button.disabled = true;
+    const resp = await postJson("/api/corrections/undo", { id });
+    if (!resp) return;
+    if (resp.ok) {
+      await loadCorrections();
+      return;
+    }
+    const data = await resp.json().catch(() => ({}));
+    correctionsStatusEl.textContent = data.error || "Couldn't undo that correction.";
+    correctionsStatusEl.hidden = false;
+    await loadCorrections(true);
+  }
+
+  // keepStatus leaves an undo error showing instead of the usual status.
+  async function loadCorrections(keepStatus = false) {
+    const resp = await api("/api/corrections");
+    if (!resp) return;
+    renderCorrections(await resp.json(), keepStatus);
+  }
+
+  function openCorrections() {
+    correctionsOpen = true;
+    cancelVoice();
+    showOnly("corrections");
+    wordFeedbackEl.hidden = true;
+    hideExample();
+    hideRemoveToast();
+    setActions();
+    endSessionButton.hidden = true;
+    correctionsListEl.replaceChildren();
+    correctionsStatusEl.hidden = true;
+    loadCorrections();
+    closeCorrectionsButton.focus();
+  }
+
+  async function closeCorrections() {
+    correctionsOpen = false;
+    await fetchState();
+  }
+
+  openCorrectionsButton.addEventListener("click", openCorrections);
+  closeCorrectionsButton.addEventListener("click", closeCorrections);
 
   function renderComplete(state) {
     const score = `${state.correct}/${state.total}`;

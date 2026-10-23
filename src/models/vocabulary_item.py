@@ -30,6 +30,10 @@ class VocabularyItem:
     # A saved example sentence and its translation (spec 021).
     example: str | None = field(default=None, compare=False, repr=False)
     example_zh: str | None = field(default=None, compare=False, repr=False)
+    # The meaning as written in the file (spec 023, research R4): a shared
+    # word's identity in hidden words, saved examples and corrections,
+    # which stays put when a shared correction changes `chinese`.
+    origin_chinese: str | None = field(default=None, compare=False, repr=False)
 
     def __post_init__(self) -> None:
         if not isinstance(self.english, str):
@@ -48,6 +52,8 @@ class VocabularyItem:
             raise VocabularyItemError("VocabularyItem requires 'ipa' to be a string or absent")
         if not isinstance(self.pos, list) or not all(isinstance(p, str) for p in self.pos):
             raise VocabularyItemError("VocabularyItem requires 'pos' to be a list of labels")
+        if self.origin_chinese is None:
+            self.origin_chinese = self.chinese
 
     @classmethod
     def from_block(cls, block: dict) -> "VocabularyItem":

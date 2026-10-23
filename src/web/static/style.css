@@ -819,3 +819,49 @@ p { margin: 0; }
   .sentence-recall-input { font-size: 18px; }
   .speak-button { flex: 1 1 100%; }
 }
+
+/* — word corrections (spec 023) — */
+
+#open-corrections { display: inline-flex; align-items: center; gap: var(--space-1); }
+.corrections-view { width: 100%; max-width: 640px; }
+.corrections-head {
+  display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+  gap: var(--space-2) var(--space-4); margin-bottom: var(--space-2);
+}
+.corrections-title { font-size: 32px; line-height: 1.1; }
+.corrections-status {
+  margin-top: var(--space-3); padding: var(--space-2) var(--space-3);
+  background: var(--color-surface); border-radius: var(--radius-md); font-size: 15px;
+}
+.corrections-list { list-style: none; margin: var(--space-4) 0 0; padding: 0; }
+.corrections-empty { padding: var(--space-3) 0; border-top: 1px solid var(--color-divider); }
+.correction-row {
+  display: flex; flex-direction: column; gap: var(--space-1);
+  padding: var(--space-3) 0; border-top: 1px solid var(--color-divider);
+}
+.correction-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1) var(--space-2); }
+.correction-word { font-weight: 600; overflow-wrap: anywhere; }
+.correction-meta { font-size: 14px; }
+.correction-actions { margin-left: auto; display: inline-flex; align-items: center; gap: var(--space-2); }
+.correction-change {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-2);
+  overflow-wrap: anywhere;
+}
+.correction-old { color: var(--color-muted); text-decoration: line-through; }
+.correction-arrow { color: var(--color-muted); }
+.correction-new { color: var(--color-accent-700); }
+.correction-row.is-undone .correction-old { text-decoration: none; color: var(--color-text); }
+.correction-row.is-undone .correction-new { text-decoration: line-through; color: var(--color-muted); }
+.updated-note {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  margin-top: var(--space-2); font-size: 14px; color: var(--color-accent-700);
+}
+
+@media (max-width: 600px) {
+  #open-corrections .nav-label { display: none; }
+  /* Mid-session the header also holds End session: the name gives way. */
+  .nav:has(#end-session-button:not([hidden])):has(#open-corrections:not([hidden])) .account-name {
+    display: none;
+  }
+  .correction-meta { order: 1; flex-basis: 100%; }
+}
