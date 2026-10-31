@@ -521,6 +521,22 @@ p { margin: 0; }
 .cmyk-num .plate-m { color: var(--color-accent-2); translate: 0.036em 0.025em; }
 .cmyk-num .plate-y { color: var(--color-process-yellow); translate: -0.031em -0.023em; }
 
+/* The missed words under the score (spec 024). */
+.missed-words { margin-top: var(--space-6); max-width: 640px; }
+.missed-list { list-style: none; margin: var(--space-2) 0 0; padding: 0; }
+.missed-item {
+  display: flex; flex-direction: column; gap: var(--space-1);
+  padding: var(--space-3) 0; border-top: 1px solid var(--color-divider);
+  overflow-wrap: anywhere;
+}
+.missed-english {
+  font-family: var(--font-heading); font-weight: var(--font-heading-weight);
+  font-size: 24px; line-height: 1.2;
+}
+.missed-details { color: var(--color-muted); font-size: 15px; white-space: pre-wrap; }
+.missed-answer { color: var(--color-muted); font-size: 15px; }
+.missed-answer--shown { font-style: italic; }
+
 /* — motion — */
 
 @keyframes stampIn {

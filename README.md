@@ -148,7 +148,10 @@ Random) and **Mode** (Recall only / Recall + example / + sentence recall)
 collection to start. Finishing a session shows your score and offers a
 "Back to word sets" button that returns to that same screen (re-reading the vocabulary folder, so files you've added or changed
 in the meantime show up, and letting you pick fresh settings for the next
-pass), all without restarting the server. Passing `--group` skips this
+pass), all without restarting the server. Below the button, **Missed
+words** lists every word you got wrong in that set, in order, with its
+pronunciation, part of speech and meaning next to what you typed ("Shown"
+if you used Show answer), or says "No missed words". Passing `--group` skips this
 screen entirely and behaves as before: it goes straight into practicing
 just that group, with no way to switch collections without restarting.
 

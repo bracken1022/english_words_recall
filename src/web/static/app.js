@@ -39,6 +39,8 @@
   const sessionTallyEl = document.getElementById("session-tally");
   const scoreEl = document.querySelector("#complete-view .score");
   const restartButton = document.getElementById("restart-button");
+  const missedHeadingEl = document.getElementById("missed-heading");
+  const missedListEl = document.getElementById("missed-list");
   const openCorrectionsButton = document.getElementById("open-corrections");
   const closeCorrectionsButton = document.getElementById("close-corrections");
   const correctionsStatusEl = document.getElementById("corrections-status");
@@ -430,8 +432,32 @@
     const score = `${state.correct}/${state.total}`;
     for (const span of scoreEl.children) span.textContent = score;
     sessionTallyEl.textContent = `${state.correct} of ${state.total} recalled correctly.`;
+    renderMissed(state.missed || []);
     restartButton.hidden = !state.can_restart;
     if (state.can_restart) restartButton.focus();
+  }
+
+  // The words answered wrongly in the set just finished (spec 024).
+  function renderMissed(missed) {
+    missedListEl.replaceChildren();
+    missedListEl.hidden = missed.length === 0;
+    missedHeadingEl.textContent =
+      missed.length === 0 ? "No missed words" : `Missed words (${missed.length})`;
+    for (const entry of missed) {
+      const item = el("li", "missed-item");
+      item.append(el("span", "missed-english", entry.english));
+      const details = [];
+      if (entry.ipa) details.push(`/${entry.ipa}/`);
+      if (entry.pos.length) details.push(entry.pos.join(", "));
+      if (details.length) item.append(el("span", "missed-details", details.join("  ")));
+      item.append(el("span", "missed-chinese", entry.chinese));
+      item.append(
+        entry.shown
+          ? el("span", "missed-answer missed-answer--shown", "Shown")
+          : el("span", "missed-answer", `Your answer: ${entry.answer}`),
+      );
+      missedListEl.append(item);
+    }
   }
 
   function getSelectedOrder() {

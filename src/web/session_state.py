@@ -6,6 +6,9 @@ Spec 021 replaced sentence writing and review with example sentences:
 in the "example" modes every answer goes to "reveal", which carries the
 word's example (made in the background by an ExampleService as soon as
 the word comes up), and the attempt is recorded once the learner moves on.
+
+Spec 024 keeps the words answered wrongly in the current set, for the
+completion screen.
 """
 
 import random
@@ -70,6 +73,8 @@ class PracticeSession:
         self.current_index = 0
         self.pending_attempt: dict | None = None
         self.correct_count = 0
+        # (item, answer) for each word answered wrongly in this set (spec 024).
+        self.missed: list[tuple] = []
         self.item_filter = item_filter
         self.example_service = example_service
         self.correction_service = correction_service
@@ -191,15 +196,19 @@ class PracticeSession:
         self.current_index = 0
         self.pending_attempt = None
         self.correct_count = 0
+        self.missed = []
         self.step = "recall" if self.items else "empty"
         self._word_started()
 
     def _record_and_advance(self) -> None:
-        """Record the word's held attempt, tally it, and go on to the next
+        """Record the word's held attempt, tally it (a wrong one is also
+        kept for the missed-words list, spec 024), and go on to the next
         word or "complete"."""
         append_attempt(self.progress_file, PracticeAttempt(**self.pending_attempt))
         if self.pending_attempt["correct"]:
             self.correct_count += 1
+        else:
+            self.missed.append((self.current_item, self.pending_attempt["answer"]))
         self.pending_attempt = None
         self.sentence_revealed = False
         self.current_index += 1
@@ -274,6 +283,7 @@ class PracticeSession:
         items, warnings = self._load(self.vocab_dir)
         self.warnings = warnings
         self.all_items = items
+        self.missed = []
         self.step = "choose" if self.all_items else "empty"
 
     def set_vocab_dir(self, vocab_dir: Path) -> None:
@@ -363,6 +373,25 @@ class PracticeSession:
             example = {"sentence": None, "translation": example["translation"]}
         return {"example": example, "example_status": status}
 
+    def _missed_entries(self) -> list[dict]:
+        """The missed words with each word's current values (so a spec 023
+        correction made since shows) and the answer, or that it was shown
+        (spec 024, contracts/state-complete.md)."""
+        entries = []
+        for item, answer in self.missed:
+            shown = not answer.strip()
+            entries.append(
+                {
+                    "english": item.english,
+                    "ipa": item.ipa,
+                    "pos": list(item.pos),
+                    "chinese": item.chinese,
+                    "answer": None if shown else answer,
+                    "shown": shown,
+                }
+            )
+        return entries
+
     def state(self) -> dict:
         base = {"step": self.step, "warnings": self.warnings}
         if self.step == "choose":
@@ -372,6 +401,7 @@ class PracticeSession:
             base["total"] = len(self.items)
             base["correct"] = self.correct_count
             base["can_restart"] = not self.group_locked
+            base["missed"] = self._missed_entries()
             return base
         if self.step == "empty":
             return base

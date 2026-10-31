@@ -720,3 +720,33 @@ def test_app_js_undoes_corrections():
     assert "entry.can_undo" in js
     assert '"Undo"' in js
     assert '"Undone"' in js
+
+
+# --- spec 024: missed words ------------------------------------------------------
+
+
+def test_complete_view_has_the_missed_words_section_after_the_actions():
+    html = TEMPLATE_PATH.read_text(encoding="utf-8")
+    start, end = _section_bounds(html, "complete-view")
+    section = html[start:end]
+    assert 'id="missed-words"' in section
+    assert 'id="missed-list"' in section
+    assert section.index('id="restart-button"') < section.index('id="missed-words"')
+
+
+def test_app_js_renders_missed_words_safely():
+    js = JS_PATH.read_text(encoding="utf-8")
+    assert "function renderMissed" in js
+    complete = js[js.index("function renderComplete") :]
+    complete = complete[: complete.index("\n  }\n")]
+    assert "renderMissed(" in complete
+    missed = js[js.index("function renderMissed") :]
+    missed = missed[: missed.index("\n  }\n")]
+    assert "innerHTML" not in missed
+    for text in ('"No missed words"', "Missed words (", "Your answer: ", '"Shown"'):
+        assert text in missed, text
+
+
+def test_style_wraps_long_missed_words():
+    css = CSS_PATH.read_text(encoding="utf-8")
+    assert re.search(r"\.missed-item\s*\{[^}]*overflow-wrap:\s*anywhere", css)

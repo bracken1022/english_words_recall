@@ -402,3 +402,84 @@ def test_post_end_rejected_when_group_locked(tmp_path: Path):
     client = _make_client(tmp_path)
     resp = client.post("/api/end")
     assert resp.status_code == 409
+
+
+# --- spec 024: missed words at "complete" (contracts/state-complete.md) ----------
+
+MISSED_VOCAB = (
+    "---\nenglish: receive\nchinese: 收到\nipa: rɪˈsiːv\npos: [v.]\ngroup: unit1\n---\n\n"
+    "---\nenglish: rent\nchinese: 租金\ngroup: unit1\n---\n\n"
+    "---\nenglish: tyre\nchinese: 轮胎\ngroup: unit1\n---\n"
+)
+
+
+def _finish(client, answers):
+    client.post("/api/select", json={"collection": "unit1", "mode": "recall-only"})
+    for answer in answers:
+        client.post("/api/answer", json={"answer": answer})
+        client.post("/api/continue")
+    return client.get("/api/state").get_json()
+
+
+def test_complete_state_lists_missed_words(tmp_path: Path):
+    client = _make_client(tmp_path, vocab_text=MISSED_VOCAB, offer_choice=True)
+    data = _finish(client, ["recieve", "", "tyre"])
+    assert data["step"] == "complete"
+    assert data["missed"] == [
+        {
+            "english": "receive",
+            "ipa": "rɪˈsiːv",
+            "pos": ["v."],
+            "chinese": "收到",
+            "answer": "recieve",
+            "shown": False,
+        },
+        {
+            "english": "rent",
+            "ipa": None,
+            "pos": [],
+            "chinese": "租金",
+            "answer": None,
+            "shown": True,
+        },
+    ]
+    assert len(data["missed"]) == data["total"] - data["correct"]
+
+
+def test_complete_state_missed_is_empty_when_all_right(tmp_path: Path):
+    client = _make_client(tmp_path, vocab_text=MISSED_VOCAB, offer_choice=True)
+    assert _finish(client, ["receive", "rent", "tyre"])["missed"] == []
+
+
+def test_missed_is_absent_before_complete(tmp_path: Path):
+    client = _make_client(tmp_path, vocab_text=MISSED_VOCAB, offer_choice=True)
+    client.post("/api/select", json={"collection": "unit1", "mode": "recall-only"})
+    assert "missed" not in client.get("/api/state").get_json()
+    client.post("/api/answer", json={"answer": "x"})
+    assert "missed" not in client.get("/api/state").get_json()
+
+
+def test_each_account_sees_only_its_own_missed_words(tmp_path: Path):
+    from src.models.account import Account
+
+    vocab_dir = tmp_path / "vocab"
+    vocab_dir.mkdir()
+    (vocab_dir / "unit1.md").write_text(MISSED_VOCAB, encoding="utf-8")
+    app = create_app(
+        vocab_dir=vocab_dir,
+        progress_file=tmp_path / "progress.md",
+        offer_choice=True,
+        accounts=[
+            Account("weibo", "pw1", "Weibo", tmp_path / "p1.md"),
+            Account("lily", "pw2", None, tmp_path / "p2.md"),
+        ],
+        word_lists_dir=tmp_path / "wl",
+    )
+    weibo, lily = app.test_client(), app.test_client()
+    weibo.post("/api/login", json={"username": "weibo", "password": "pw1"})
+    lily.post("/api/login", json={"username": "lily", "password": "pw2"})
+    weibo_missed = _finish(weibo, ["x", "rent", "tyre"])["missed"]
+    lily_missed = _finish(lily, ["receive", "rent", "y"])["missed"]
+    assert [(m["english"], m["answer"]) for m in weibo_missed] == [("receive", "x")]
+    assert [(m["english"], m["answer"]) for m in lily_missed] == [("tyre", "y")]
+    assert weibo.get("/api/state").get_json()["missed"] == weibo_missed
